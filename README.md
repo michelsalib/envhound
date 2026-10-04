@@ -26,6 +26,7 @@ pathprepend() is defined in ~/.profile
 | `rcenv set NAME=value…` | set variables for future login shells (see below) |
 | `rcenv unset NAME…` | remove variables `rcenv set` added |
 | `rcenv path add DIR [--append]` / `rcenv path remove DIR` | put a directory in `PATH` (front by default), or take it out |
+| `rcenv edit` | interactive editor for variables and `PATH` (see below) |
 | `rcenv completion bash\|zsh\|fish` | a shell completion script (commands, flags, live variable names) |
 
 Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, … are masked by default), `--home DIR`,
@@ -68,6 +69,27 @@ This shell is unchanged. To apply it here too, run:
 - A program can't change the shell that started it, so rcenv prints the commands to apply the change in
   the current shell.
 
+## Interactive editor
+
+`rcenv edit` opens a full-screen editor with two tabs, **Variables** and **PATH**:
+
+```
+rcenv edit   1 Variables   2 PATH    2 staged · w to write
+──────────────────────────────────────────────────────────────────────────────
+  NAME            SET BY                    VALUE
+* EDITOR          ~/.bash_profile:1         vim → code
+  NVM_DIR         ~/.profile:23             ~/.nvm
++ MY_TOKEN        rcenv                     ********
+──────────────────────────────────────────────────────────────────────────────
+EDITOR: set at ~/.bash_profile:1, staged: set
+↑↓ move  / filter  enter edit  n new  d unset  o open  u undo  w write  tab PATH  ? help  q quit
+```
+
+Changes are staged, never written directly: <kbd>w</kbd> leaves the editor and goes through the same diff,
+confirmation, backup and verification as `rcenv set`. <kbd>o</kbd> opens `$VISUAL`/`$EDITOR` at the line that sets
+the selected variable or adds the selected directory, then reloads. Lines in your own startup files are
+yours to change there; rcenv only writes its own file. <kbd>?</kbd> lists every key.
+
 ## Shell completion
 
 ```sh
@@ -92,7 +114,7 @@ Values labelled `(inherited)` come from whatever launched your shell (terminal, 
 
 ## Status
 
-bash only for now. Planned: an interactive editor (`rcenv edit`), then zsh and fish.
+bash only for now. Planned: zsh and fish, `.env` files in `rcenv edit`, and packaging (npm, `.deb`).
 
 ## Development
 

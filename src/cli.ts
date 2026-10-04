@@ -23,6 +23,8 @@ import {
 import { locations } from "./managed.ts";
 import { currentShellCommands, planDotenv, planShell, verify, type EditOp } from "./set.ts";
 import { traceBash } from "./trace/bash.ts";
+import { loadData } from "./tui/load.ts";
+import { runEditor } from "./tui/terminal.ts";
 
 const HELP = `rcenv ${pkg.version}: find which startup file sets each environment variable, and change it
 
@@ -45,6 +47,9 @@ Usage:
                       rcenv adds to your login file. With --file FILE, set and
                       unset edit a .env file instead. Every change is shown as
                       a diff and confirmed first; changed files are backed up.
+
+  rcenv edit          interactive editor for variables and PATH: stage changes,
+                      then review them as a diff and write
 
   rcenv completion SHELL
                       print a completion script for bash, zsh or fish, e.g.
@@ -162,6 +167,15 @@ async function main(argv: string[]): Promise<number> {
         if (name === "PATH" && !values.file) return usage("use 'rcenv path add DIR' to change PATH");
         ops.push(command === "set" ? { kind: "set", name, value: arg.slice(eq + 1) } : { kind: "unset", name });
       }
+      return edit(ops, values, opts);
+    }
+    case "edit": {
+      if (!process.stdin.isTTY || !process.stdout.isTTY) return usage("edit needs a terminal");
+      const loc = locations(opts.home, process.env, values.home !== undefined);
+      process.stderr.write("tracing startup files…\r");
+      const ops = await runEditor(() => loadData(traceBash({ home: values.home }), process.env, loc), opts);
+      process.stderr.write("\x1b[K");
+      if (!ops?.length) return 0;
       return edit(ops, values, opts);
     }
     case "dotenv": {

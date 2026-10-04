@@ -8,6 +8,7 @@ export const COMMANDS: Record<string, string> = {
   dotenv: "check .env files against your shell",
   set: "set variables for future login shells (or a .env file)",
   unset: "remove variables rcenv set",
+  edit: "interactive editor for variables and PATH",
   completion: "print a shell completion script",
 };
 

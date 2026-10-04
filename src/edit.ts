@@ -49,6 +49,8 @@ export async function confirm(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
     return /^y(es)?$/i.test((await rl.question(question)).trim());
+  } catch {
+    return false; // ctrl-d or end of input: no
   } finally {
     rl.close();
   }
