@@ -3,6 +3,8 @@
 // comments, order or quoting. Syntax is the common subset of dotenv, Node's
 // --env-file, Bun and docker compose.
 
+import { dotenvQuote } from "./quote.ts";
+
 export type Quote = "'" | '"' | "`" | "";
 
 export interface DotenvLine {
@@ -16,6 +18,10 @@ export interface DotenvLine {
   value?: string;
   exported?: boolean;
   quote?: Quote;
+  /** Inline comment after the value, with its leading whitespace, kept when the value is rewritten. */
+  trailing?: string;
+  /** Leading whitespace of the line. */
+  indent?: string;
   /** Value contains $VAR or ${VAR}: loaders disagree on whether it expands. */
   expands?: boolean;
   problem?: string;
@@ -46,7 +52,7 @@ const unescapeDouble = (s: string) =>
 export function parseDotenv(text: string): DotenvDoc {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const trailingNewline = text.endsWith("\n");
-  const physical = text.split(/\r?\n/);
+  const physical = text === "" ? [] : text.split(/\r?\n/);
   if (trailingNewline) physical.pop();
 
   const lines: DotenvLine[] = [];
@@ -67,7 +73,7 @@ export function parseDotenv(text: string): DotenvDoc {
       lines.push({ ...base, kind: "invalid", problem: "not a KEY=value line" });
       continue;
     }
-    const [, , exportWord, key, , rest] = m as unknown as [string, string, string | undefined, string, string, string];
+    const [, indent, exportWord, key, , rest] = m as unknown as [string, string, string | undefined, string, string, string];
     if (!KEY.test(key)) {
       lines.push({ ...base, kind: "invalid", key, problem: `invalid key '${key}'` });
       continue;
@@ -77,6 +83,7 @@ export function parseDotenv(text: string): DotenvDoc {
     let value: string;
     let quote: Quote = "";
     let problem: string | undefined;
+    let trailing: string | undefined;
     let endLine = i + 1;
     let fullRaw = raw;
 
@@ -94,15 +101,18 @@ export function parseDotenv(text: string): DotenvDoc {
         lines.push({ ...base, kind: "invalid", key, problem: `unterminated ${q} quote` });
         continue;
       }
-      const after = text.slice(end + 1).trim();
-      if (after && !after.startsWith("#")) problem = "text after the closing quote is ignored";
+      const after = text.slice(end + 1);
+      if (after.trim().startsWith("#")) trailing = after;
+      else if (after.trim()) problem = "text after the closing quote is ignored";
       value = q === '"' ? unescapeDouble(text.slice(0, end)) : text.slice(0, end);
       quote = q;
       fullRaw = physical.slice(i, j + 1).join("\n");
       endLine = j + 1;
       i = j;
     } else {
-      value = body.replace(/(^|\s+)#.*$/, "").trim();
+      const comment = /(^|\s+)#.*$/.exec(body);
+      if (comment) trailing = comment[0];
+      value = body.slice(0, comment?.index ?? body.length).trim();
     }
 
     lines.push({
@@ -114,6 +124,8 @@ export function parseDotenv(text: string): DotenvDoc {
       value,
       exported: !!exportWord,
       quote,
+      trailing,
+      indent,
       expands: quote !== "'" && EXPANSION.test(value),
       problem,
     });
@@ -175,4 +187,22 @@ export function compareDotenv(doc: DotenvDoc, env: Record<string, string | undef
       const status: KeyStatus = current === undefined ? "new" : current === l.value ? "same" : "conflict";
       return { key: l.key!, line: l.line, value: l.value!, status, current };
     });
+}
+
+/** Set `key`, rewriting its last line in place (keeping export, quote style, inline comment) or appending it. */
+export function setKey(doc: DotenvDoc, key: string, value: string): DotenvDoc {
+  const i = doc.lines.findLastIndex((l) => l.kind === "entry" && l.key === key);
+  const old = doc.lines[i];
+  const quote = old?.quote ?? "";
+  const raw = `${old?.indent ?? ""}${old?.exported ? "export " : ""}${key}=${dotenvQuote(value, quote)}${old?.trailing ?? ""}`;
+  const parsed = parseDotenv(raw).lines[0]!;
+  const line: DotenvLine = { ...parsed, line: old?.line ?? 0, endLine: old?.endLine ?? 0 };
+  if (old) return { ...doc, lines: doc.lines.map((l, j) => (j === i ? line : l)) };
+  // appending: the file now needs a newline between its old last line and the new one
+  return { ...doc, lines: [...doc.lines, line], trailingNewline: true };
+}
+
+/** Remove every line for `key`. */
+export function unsetKey(doc: DotenvDoc, key: string): DotenvDoc {
+  return { ...doc, lines: doc.lines.filter((l) => !(l.kind === "entry" && l.key === key)) };
 }

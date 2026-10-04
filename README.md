@@ -1,6 +1,6 @@
 # rcenv
 
-Find which startup file sets each environment variable, and audit your `PATH`.
+Find which startup file sets each environment variable, audit your `PATH`, and change them safely.
 
 ```
 $ rcenv blame PATH
@@ -23,15 +23,50 @@ pathprepend() is defined in ~/.profile
 | `rcenv blame VAR` | every startup `file:line` that assigns `VAR`, in order; for `PATH`, what each step added or removed |
 | `rcenv path` | the current `PATH` one entry per line, who added each entry, missing directories and duplicates |
 | `rcenv dotenv [FILE…]` | for each key of a `.env` file (default `./.env`): new, same as your shell, or in conflict (with the startup line behind the shell's value); plus syntax problems, duplicates and `$VAR` expansion. Exits 1 if there are problems |
+| `rcenv set NAME=value…` | set variables for future login shells (see below) |
+| `rcenv unset NAME…` | remove variables `rcenv set` added |
+| `rcenv path add DIR [--append]` / `rcenv path remove DIR` | put a directory in `PATH` (front by default), or take it out |
 | `rcenv completion bash\|zsh\|fish` | a shell completion script (commands, flags, live variable names) |
 
-Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, … are masked by default), `--home DIR`.
+Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, … are masked by default), `--home DIR`,
+and for changes `--file FILE`, `--yes`, `--dry-run`, `--append`.
 
 `blame` also tells you when an assignment doesn't stick:
 
 - **not effective**: a fresh shell ends with a different value, e.g. a one-command prefix like `SHELL=/bin/sh lesspipe`
 - **not exported**: set as a shell variable only, so programs started from the shell don't see it
 - **different in this shell**: the current shell's value differs from what a fresh login shell gets
+
+## Changing variables
+
+```
+$ rcenv set EDITOR=vim
+note: EDITOR is also set at ~/.bashrc:12; rcenv's line runs last, so it wins in login shells
+note: ~/.bashrc runs again in every non-login shell and will set EDITOR back there; consider removing that line
+
+~/.config/rcenv/env.sh
+  # Hand edits are fine: rcenv keeps lines it does not recognise.
++ export EDITOR=vim
+
+Write these changes? [y/N] y
+wrote ~/.config/rcenv/env.sh
+✓ a fresh login shell now gets EDITOR
+
+This shell is unchanged. To apply it here too, run:
+  export EDITOR=vim
+```
+
+- rcenv writes **its own file**, `~/.config/rcenv/env.sh` (mode 600), and never rewrites your startup
+  files. The first time, it appends one line to your login file (`~/.bash_profile`, `~/.bash_login` or
+  `~/.profile`, whichever bash reads) to load it. Being last, rcenv's values win.
+- Every change is shown as a **diff** (secrets masked) and confirmed; `--yes` skips the question,
+  `--dry-run` only shows it. Changed files are **backed up** to `~/.local/state/rcenv/backups/`.
+- After writing, rcenv **re-traces** a fresh login shell to check the change took effect, and names the
+  line that overrides it if not.
+- With `--file .env`, `set` and `unset` edit a `.env` file instead, changing only that key's line and keeping
+  comments, `export`, quote style and inline comments.
+- A program can't change the shell that started it, so rcenv prints the commands to apply the change in
+  the current shell.
 
 ## Shell completion
 
@@ -57,9 +92,7 @@ Values labelled `(inherited)` come from whatever launched your shell (terminal, 
 
 ## Status
 
-bash only for now. Planned: zsh and fish, `rcenv set`/`unset` writing to a file rcenv owns or to a
-`.env` file (the `.env` parser already preserves comments, order and quoting), and an interactive
-editor (`rcenv edit`).
+bash only for now. Planned: an interactive editor (`rcenv edit`), then zsh and fish.
 
 ## Development
 

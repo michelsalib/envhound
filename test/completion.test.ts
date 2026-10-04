@@ -6,7 +6,7 @@ const env = { PATH: "/bin", PAGER: "less", EDITOR: "vim" };
 const names = (words: string[]) => complete(words, env).map((c) => c.split("\t")[0]);
 
 describe("complete", () => {
-  test("commands first", () => expect(names([""])).toEqual(["list", "blame", "path", "dotenv", "completion"]));
+  test("commands first", () => expect(names([""])).toEqual(["list", "blame", "path", "dotenv", "set", "unset", "completion"]));
   test("prefix filter", () => expect(names(["b"])).toEqual(["blame"]));
   test("flags", () => expect(names(["--j"])).toEqual(["--json"]));
   test("variable names after blame, live from env", () => expect(names(["blame", "PA"])).toEqual(["PAGER", "PATH"]));

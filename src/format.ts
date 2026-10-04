@@ -18,7 +18,7 @@ export function shown(name: string, value: string | undefined, o: RenderOptions)
   return value === undefined || o.showSecrets || !isSecret(name) ? value : "********";
 }
 
-function paint(o: RenderOptions) {
+export function paint(o: RenderOptions) {
   const wrap = (code: string) => (s: string) => (o.color && s ? `\x1b[${code}m${s}\x1b[0m` : s);
   return { bold: wrap("1"), dim: wrap("2"), red: wrap("31"), green: wrap("32"), yellow: wrap("33"), cyan: wrap("36") };
 }
@@ -44,7 +44,7 @@ function fitStart(s: string, width: number): string {
 export const loc = (l: Location, home: string) => `${tilde(l.file, home)}:${l.line}`;
 
 /** Where to look for an assignment, e.g. `~/.bashrc:12` or `~/.bashrc:12 add_path()`. */
-function where(a: Assignment, home: string): string {
+export function where(a: Assignment, home: string): string {
   return loc(origin(a), home) + (a.via?.kind === "function" ? ` ${a.via.name}()` : "");
 }
 
