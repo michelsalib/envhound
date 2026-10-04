@@ -22,8 +22,9 @@ import type { Assignment, Trace } from "./model.ts";
 import { shellQuote } from "./quote.ts";
 
 export type EditOp =
-  | { kind: "set"; name: string; value: string }
-  | { kind: "unset"; name: string }
+  /** `file`: a .env file to edit instead of the shell */
+  | { kind: "set"; name: string; value: string; file?: string }
+  | { kind: "unset"; name: string; file?: string }
   | { kind: "path-add"; dir: string; position: "front" | "back" }
   | { kind: "path-remove"; dir: string };
 

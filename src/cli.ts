@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
@@ -48,7 +48,8 @@ Usage:
                       unset edit a .env file instead. Every change is shown as
                       a diff and confirmed first; changed files are backed up.
 
-  rcenv edit          interactive editor for variables and PATH: stage changes,
+  rcenv edit [FILE...] interactive editor for variables, PATH and .env files
+                      (./.env is included when it exists): stage changes,
                       then review them as a diff and write
 
   rcenv completion SHELL
@@ -165,15 +166,20 @@ async function main(argv: string[]): Promise<number> {
         if (command === "set" && eq < 0) return usage(`expected NAME=value, got '${arg}'`);
         if (!valid.test(name)) return usage(`'${name}' is not a valid variable name`);
         if (name === "PATH" && !values.file) return usage("use 'rcenv path add DIR' to change PATH");
-        ops.push(command === "set" ? { kind: "set", name, value: arg.slice(eq + 1) } : { kind: "unset", name });
+        const file = values.file && resolve(values.file);
+        ops.push(command === "set" ? { kind: "set", name, value: arg.slice(eq + 1), file } : { kind: "unset", name, file });
       }
       return edit(ops, values, opts);
     }
     case "edit": {
       if (!process.stdin.isTTY || !process.stdout.isTTY) return usage("edit needs a terminal");
       const loc = locations(opts.home, process.env, values.home !== undefined);
+      // files given on the command line (or --file) open first; otherwise ./.env if there is one
+      const named = [...args, ...(values.file ? [values.file] : [])].map((f) => resolve(f));
+      const files = named.length ? [...new Set(named)] : existsSync(".env") ? [resolve(".env")] : [];
       process.stderr.write("tracing startup files…\r");
-      const ops = await runEditor(() => loadData(traceBash({ home: values.home }), process.env, loc), opts);
+      const load = () => loadData(traceBash({ home: values.home }), process.env, loc, files);
+      const ops = await runEditor(load, { ...opts, tab: named.length ? 2 : 0 });
       process.stderr.write("\x1b[K");
       if (!ops?.length) return 0;
       return edit(ops, values, opts);
@@ -213,7 +219,14 @@ async function main(argv: string[]): Promise<number> {
 async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise<number> {
   const c = paint(opts);
   const loc = locations(opts.home, process.env, values.home !== undefined);
-  const plan = values.file ? planDotenv(ops, resolve(values.file), process.env) : planShell(ops, loc, traceBash({ home: values.home }));
+  // shell changes go to rcenv's file; the others to their .env file
+  const shellOps = ops.filter((op) => !("file" in op && op.file));
+  const files = [...new Set(ops.flatMap((op) => ("file" in op && op.file ? [op.file] : [])))];
+  const plans = [
+    ...(shellOps.length ? [planShell(shellOps, loc, traceBash({ home: values.home }))] : []),
+    ...files.map((f) => planDotenv(ops.filter((op) => "file" in op && op.file === f), f, process.env)),
+  ];
+  const plan = { changes: plans.flatMap((p) => p.changes), notes: plans.flatMap((p) => p.notes) };
 
   for (const note of plan.notes) console.log(c.yellow(`note: ${note}`));
   if (!plan.changes.length) {
@@ -237,11 +250,11 @@ async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise
   const backups = applyChanges(plan.changes, loc.backups);
   for (const ch of plan.changes) console.log(`wrote ${tilde(ch.path, opts.home)}`);
   if (backups.length) console.log(c.dim(`backups in ${tilde(loc.backups, opts.home)}`));
-  if (values.file) return 0;
+  if (!shellOps.length) return 0;
 
-  const checks = verify(ops, traceBash({ home: values.home }), loc);
+  const checks = verify(shellOps, traceBash({ home: values.home }), loc);
   for (const check of checks) console.log(check.ok ? c.green(`✓ ${check.message}`) : c.yellow(`! ${check.message}`));
-  const commands = currentShellCommands(ops);
+  const commands = currentShellCommands(shellOps);
   if (commands.length) console.log(c.dim("\nThis shell is unchanged. To apply it here too, run:\n") + commands.map((x) => `  ${x}`).join("\n"));
   return checks.every((x) => x.ok) ? 0 : 1;
 }

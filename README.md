@@ -26,7 +26,7 @@ pathprepend() is defined in ~/.profile
 | `rcenv set NAME=value…` | set variables for future login shells (see below) |
 | `rcenv unset NAME…` | remove variables `rcenv set` added |
 | `rcenv path add DIR [--append]` / `rcenv path remove DIR` | put a directory in `PATH` (front by default), or take it out |
-| `rcenv edit` | interactive editor for variables and `PATH` (see below) |
+| `rcenv edit [FILE…]` | interactive editor for variables, `PATH` and `.env` files (see below) |
 | `rcenv completion bash\|zsh\|fish` | a shell completion script (commands, flags, live variable names) |
 
 Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, … are masked by default), `--home DIR`,
@@ -71,7 +71,7 @@ This shell is unchanged. To apply it here too, run:
 
 ## Interactive editor
 
-`rcenv edit` opens a full-screen editor with two tabs, **Variables** and **PATH**:
+`rcenv edit [FILE…]` opens a full-screen editor with tabs for **Variables**, **PATH** and each `.env` file:
 
 ```
 rcenv edit   1 Variables   2 PATH    2 staged · w to write
@@ -89,6 +89,12 @@ Changes are staged, never written directly: <kbd>w</kbd> leaves the editor and g
 confirmation, backup and verification as `rcenv set`. <kbd>o</kbd> opens `$VISUAL`/`$EDITOR` at the line that sets
 the selected variable or adds the selected directory, then reloads. Lines in your own startup files are
 yours to change there; rcenv only writes its own file. <kbd>?</kbd> lists every key.
+
+`.env` files get a tab each: `./.env` when it exists, or the files you name (which then open first). Each key
+shows its line, its value and how it compares with your shell (same, or the shell's value when they differ),
+plus syntax problems and duplicates. Edits there go through the same diff and confirmation, but only change
+that key's line, as `rcenv set --file` does. One session can stage both: on <kbd>w</kbd>, shell variables go
+to rcenv's file and `.env` keys to their file.
 
 ## Shell completion
 
@@ -114,7 +120,7 @@ Values labelled `(inherited)` come from whatever launched your shell (terminal, 
 
 ## Status
 
-bash only for now. Planned: zsh and fish, `.env` files in `rcenv edit`, and packaging (npm, `.deb`).
+bash only for now. Planned: zsh and fish, and packaging (npm, `.deb`).
 
 ## Development
 

@@ -5,8 +5,6 @@ import { isSecret, tilde } from "../format.ts";
 import type { Location } from "../model.ts";
 import type { EditOp } from "../set.ts";
 
-export type Tab = "vars" | "path";
-
 export interface VarRow {
   name: string;
   value: string | undefined;
@@ -26,24 +24,49 @@ export interface PathRow {
   duplicateOf?: number;
 }
 
+export interface DotenvRow {
+  key: string;
+  /** effective value: the last line for this key */
+  value: string;
+  line: number;
+  /** compared with the current shell */
+  status: "new" | "same" | "conflict";
+  current?: string;
+  /** lines defining this key; more than one is a duplicate */
+  count: number;
+  problem?: string;
+}
+
+export interface DotenvData {
+  file: string;
+  exists: boolean;
+  rows: DotenvRow[];
+  problems: number;
+}
+
 export interface Data {
   home: string;
   vars: VarRow[];
   path: PathRow[];
+  dotenv: DotenvData[];
 }
+
+export type TabDef = { kind: "vars" } | { kind: "path" } | { kind: "dotenv"; file: string };
 
 export type PromptKind =
   | { kind: "filter" }
-  | { kind: "edit"; name: string }
-  | { kind: "new-name" }
-  | { kind: "new-value"; name: string }
+  | { kind: "edit"; name: string; file?: string }
+  | { kind: "new-name"; file?: string }
+  | { kind: "new-value"; name: string; file?: string }
   | { kind: "path-add"; position: "front" | "back" };
 
 export interface State {
   data: Data;
-  tab: Tab;
+  /** index into tabs(state) */
+  tab: number;
   ops: EditOp[];
-  cursor: Record<Tab, number>;
+  /** cursor per tab, by tabId */
+  cursor: Record<string, number>;
   filter: string;
   prompt?: { for: PromptKind; label: string; value: string; secret?: boolean };
   message?: { text: string; error?: boolean };
@@ -65,8 +88,26 @@ export interface Key {
 
 export type Effect = { kind: "quit" } | { kind: "write" } | { kind: "open"; at: Location };
 
-export function initialState(data: Data, showSecrets = false): State {
-  return { data, tab: "vars", ops: [], cursor: { vars: 0, path: 0 }, filter: "", confirmQuit: false, help: false, showSecrets, pageSize: 10 };
+export function tabs(s: State): TabDef[] {
+  return [{ kind: "vars" }, { kind: "path" }, ...s.data.dotenv.map((d): TabDef => ({ kind: "dotenv", file: d.file }))];
+}
+
+export const tabId = (t: TabDef) => (t.kind === "dotenv" ? `dotenv:${t.file}` : t.kind);
+export const currentTab = (s: State): TabDef => tabs(s)[s.tab] ?? { kind: "vars" };
+export const cursorOf = (s: State) => s.cursor[tabId(currentTab(s))] ?? 0;
+
+export function initialState(data: Data, opts: { showSecrets?: boolean; tab?: number } = {}): State {
+  return {
+    data,
+    tab: opts.tab ?? 0,
+    ops: [],
+    cursor: {},
+    filter: "",
+    confirmQuit: false,
+    help: false,
+    showSecrets: opts.showSecrets ?? false,
+    pageSize: 10,
+  };
 }
 
 // ---- rows as displayed: data plus staged changes ----
@@ -80,10 +121,20 @@ export interface PathView extends PathRow {
   pending?: "add" | "remove";
 }
 
+export interface DotenvView extends DotenvRow {
+  pending?: "set" | "unset" | "new";
+  newValue?: string;
+}
+
+function matches(s: State, ...texts: (string | undefined)[]): boolean {
+  const f = s.filter.toLowerCase();
+  return !f || texts.some((t) => t?.toLowerCase().includes(f));
+}
+
 export function varViews(s: State): VarView[] {
   const rows: VarView[] = s.data.vars.map((r) => ({ ...r }));
   for (const op of s.ops) {
-    if (op.kind !== "set" && op.kind !== "unset") continue;
+    if ((op.kind !== "set" && op.kind !== "unset") || op.file) continue;
     const row = rows.find((r) => r.name === op.name);
     if (op.kind === "unset") {
       if (row) row.pending = "unset";
@@ -95,8 +146,7 @@ export function varViews(s: State): VarView[] {
     }
   }
   rows.sort((a, b) => a.name.localeCompare(b.name));
-  const f = s.filter.toLowerCase();
-  return f ? rows.filter((r) => r.name.toLowerCase().includes(f) || (r.newValue ?? r.value ?? "").toLowerCase().includes(f)) : rows;
+  return rows.filter((r) => matches(s, r.name, r.newValue ?? r.value));
 }
 
 export function pathViews(s: State): PathView[] {
@@ -113,29 +163,56 @@ export function pathViews(s: State): PathView[] {
   return rows;
 }
 
-const rowCount = (s: State) => (s.tab === "vars" ? varViews(s).length : pathViews(s).length);
+export function dotenvViews(s: State, file: string): DotenvView[] {
+  const data = s.data.dotenv.find((d) => d.file === file);
+  const rows: DotenvView[] = (data?.rows ?? []).map((r) => ({ ...r }));
+  for (const op of s.ops) {
+    if ((op.kind !== "set" && op.kind !== "unset") || op.file !== file) continue;
+    const row = rows.find((r) => r.key === op.name);
+    if (op.kind === "unset") {
+      if (row) row.pending = "unset";
+    } else if (row) {
+      row.pending = "set";
+      row.newValue = op.value;
+    } else {
+      rows.push({ key: op.name, value: "", line: 0, status: "new", count: 0, pending: "new", newValue: op.value });
+    }
+  }
+  return rows.filter((r) => matches(s, r.key, r.newValue ?? r.value));
+}
+
+function rowCount(s: State): number {
+  const t = currentTab(s);
+  return t.kind === "vars" ? varViews(s).length : t.kind === "path" ? pathViews(s).length : dotenvViews(s, t.file).length;
+}
 
 // ---- staging ----
 
-const target = (op: EditOp) => (op.kind === "set" || op.kind === "unset" ? `var:${op.name}` : `path:${op.dir}`);
+function target(op: EditOp): string {
+  if (op.kind === "set" || op.kind === "unset") return `${op.file ?? "shell"}:${op.name}`;
+  return `path:${op.dir}`;
+}
 
-/** Stage an op, replacing earlier ops on the same variable or directory. */
+/** Stage an op, replacing earlier ops on the same variable, key or directory. */
 function stage(s: State, op: EditOp, text: string): State {
   const ops = s.ops.filter((o) => target(o) !== target(op));
   return { ...s, ops: [...ops, op], message: { text } };
 }
 
-/** Drop staged ops on a target, e.g. unsetting a variable that was only staged. */
-function unstage(s: State, t: string, text: string): State {
-  return { ...s, ops: s.ops.filter((o) => target(o) !== t), message: { text } };
+/** Drop staged ops on the same target as `op`. */
+function unstage(s: State, op: EditOp, text: string): State {
+  return { ...s, ops: s.ops.filter((o) => target(o) !== target(op)), message: { text } };
 }
 
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const DOTENV_NAME = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
 function expandDir(input: string, home: string): string {
   const d = input.trim().replace(/^~(?=\/|$)/, home);
   return isAbsolute(d) ? resolve(d) : resolve(process.cwd(), d);
 }
+
+const short = (s: State, path: string) => tilde(path, s.data.home);
 
 function submitPrompt(s: State): State {
   const p = s.prompt!;
@@ -144,22 +221,26 @@ function submitPrompt(s: State): State {
     case "filter":
       return { ...closed, filter: p.value };
     case "edit":
-      return stage(closed, { kind: "set", name: p.for.name, value: p.value }, `${p.for.name} will be set`);
+    case "new-value": {
+      const { name, file } = p.for;
+      return stage(closed, { kind: "set", name, value: p.value, file }, `${name} will be set${file ? ` in ${short(s, file)}` : ""}`);
+    }
     case "new-name": {
       const name = p.value.trim();
-      if (!SHELL_NAME.test(name)) return { ...s, message: { text: `'${name}' is not a valid variable name`, error: true } };
-      if (name === "PATH") return { ...closed, message: { text: "use the PATH tab to change PATH", error: true } };
-      const existing = s.data.vars.find((r) => r.name === name);
-      return { ...closed, prompt: { for: { kind: "new-value", name }, label: `${name}=`, value: existing?.value ?? "", secret: isSecret(name) } };
+      const file = p.for.file;
+      if (!(file ? DOTENV_NAME : SHELL_NAME).test(name))
+        return { ...s, message: { text: `'${name}' is not a valid ${file ? "key" : "variable name"}`, error: true } };
+      if (name === "PATH" && !file) return { ...closed, message: { text: "use the PATH tab to change PATH", error: true } };
+      const existing = file
+        ? s.data.dotenv.find((d) => d.file === file)?.rows.find((r) => r.key === name)?.value
+        : s.data.vars.find((r) => r.name === name)?.value;
+      return { ...closed, prompt: { for: { kind: "new-value", name, file }, label: `${name}=`, value: existing ?? "", secret: isSecret(name) } };
     }
-    case "new-value":
-      return stage(closed, { kind: "set", name: p.for.name, value: p.value }, `${p.for.name} will be set`);
     case "path-add": {
       if (!p.value.trim()) return closed;
       const dir = expandDir(p.value, s.data.home);
-      const shown = tilde(dir, s.data.home);
-      if (s.data.path.some((r) => r.dir === dir)) return { ...closed, message: { text: `${shown} is already in PATH`, error: true } };
-      return stage(closed, { kind: "path-add", dir, position: p.for.position }, `${shown} will be added`);
+      if (s.data.path.some((r) => r.dir === dir)) return { ...closed, message: { text: `${short(s, dir)} is already in PATH`, error: true } };
+      return stage(closed, { kind: "path-add", dir, position: p.for.position }, `${short(s, dir)} will be added`);
     }
   }
 }
@@ -169,7 +250,7 @@ function promptKey(s: State, key: Key): State {
   const set = (value: string): State => {
     const next = { ...s, prompt: { ...p, value } };
     // the filter applies as you type
-    return p.for.kind === "filter" ? { ...next, filter: value, cursor: { ...s.cursor, vars: 0 } } : next;
+    return p.for.kind === "filter" ? { ...next, filter: value, cursor: { ...s.cursor, [tabId(currentTab(s))]: 0 } } : next;
   };
   if (key.name === "escape") return { ...s, prompt: undefined, filter: p.for.kind === "filter" ? "" : s.filter };
   if (key.name === "return" || key.name === "enter") return submitPrompt(s);
@@ -181,32 +262,61 @@ function promptKey(s: State, key: Key): State {
 
 function move(s: State, to: number): State {
   const max = Math.max(0, rowCount(s) - 1);
-  return { ...s, cursor: { ...s.cursor, [s.tab]: Math.min(max, Math.max(0, to)) } };
+  return { ...s, cursor: { ...s.cursor, [tabId(currentTab(s))]: Math.min(max, Math.max(0, to)) } };
 }
 
-function varKey(s: State, key: Key): [State, Effect?] {
-  const row = varViews(s)[s.cursor.vars];
+interface Pair {
+  name: string;
+  /** current value, staged one included */
+  value: string;
+  source?: Location;
+}
+
+/** Keys shared by the Variables and .env tabs, which both list NAME=value pairs. */
+function pairKey(s: State, key: Key, row: Pair | undefined, file: string | undefined, remove: () => State): [State, Effect?] {
   switch (key.ch) {
     case "/":
       return [{ ...s, prompt: { for: { kind: "filter" }, label: "filter: ", value: s.filter } }];
     case "n":
-      return [{ ...s, prompt: { for: { kind: "new-name" }, label: "new variable name: ", value: "" } }];
+      return [{ ...s, prompt: { for: { kind: "new-name", file }, label: file ? "new key: " : "new variable name: ", value: "" } }];
     case "s":
       return [{ ...s, showSecrets: !s.showSecrets }];
   }
   if (!row) return [s];
-  if (key.ch === "e" || key.name === "return" || key.name === "enter") {
-    const value = row.newValue ?? row.value ?? "";
-    return [{ ...s, prompt: { for: { kind: "edit", name: row.name }, label: `${row.name}=`, value, secret: isSecret(row.name) } }];
+  if (key.ch === "e" || key.name === "return" || key.name === "enter")
+    return [{ ...s, prompt: { for: { kind: "edit", name: row.name, file }, label: `${row.name}=`, value: row.value, secret: isSecret(row.name) } }];
+  if (key.ch === "d") return [remove()];
+  if (key.ch === "o") {
+    if (!row.source)
+      return [{ ...s, message: { text: file ? "not in the file yet: write first" : "not set by a startup file, nothing to open", error: true } }];
+    return [s, { kind: "open", at: row.source }];
   }
-  if (key.ch === "d") {
-    if (row.pending === "new") return [unstage(s, `var:${row.name}`, `${row.name} will not be added`)];
-    if (row.managed) return [stage(s, { kind: "unset", name: row.name }, `${row.name} will be removed from rcenv's file`)];
-    if (row.pending === "set") return [unstage(s, `var:${row.name}`, `change to ${row.name} dropped`)];
-    return [{ ...s, message: { text: notOurs(row.name, row), error: true } }];
-  }
-  if (key.ch === "o") return open(s, row);
   return [s];
+}
+
+function varKey(s: State, key: Key): [State, Effect?] {
+  const row = varViews(s)[cursorOf(s)];
+  const pair = row && { name: row.name, value: row.newValue ?? row.value ?? "", source: row.source };
+  return pairKey(s, key, pair, undefined, () => {
+    const r = row!;
+    const op: EditOp = { kind: "unset", name: r.name };
+    // d on a staged change drops it, except on rcenv's own variables where it stages the removal
+    if (r.pending === "new" || r.pending === "unset" || (r.pending === "set" && !r.managed))
+      return unstage(s, op, `change to ${r.name} dropped`);
+    if (r.managed) return stage(s, op, `${r.name} will be removed from rcenv's file`);
+    return { ...s, message: { text: notOurs(r.name, r), error: true } };
+  });
+}
+
+function dotenvKey(s: State, key: Key, file: string): [State, Effect?] {
+  const row = dotenvViews(s, file)[cursorOf(s)];
+  const pair = row && { name: row.key, value: row.newValue ?? row.value, source: row.line ? { file, line: row.line } : undefined };
+  return pairKey(s, key, pair, file, () => {
+    const r = row!;
+    const op: EditOp = { kind: "unset", name: r.key, file };
+    if (r.pending) return unstage(s, op, `change to ${r.key} dropped`);
+    return stage(s, op, `${r.key} will be deleted from ${short(s, file)}`);
+  });
 }
 
 function pathKey(s: State, key: Key): [State, Effect?] {
@@ -214,25 +324,24 @@ function pathKey(s: State, key: Key): [State, Effect?] {
     const position = key.ch === "a" ? "front" : "back";
     return [{ ...s, prompt: { for: { kind: "path-add", position }, label: `add to the ${position} of PATH: `, value: "" } }];
   }
-  const row = pathViews(s)[s.cursor.path];
+  const row = pathViews(s)[cursorOf(s)];
   if (!row) return [s];
   if (key.ch === "d") {
-    if (row.pending) return [unstage(s, `path:${row.dir}`, `change to ${row.dir} dropped`)];
-    if (row.managed) return [stage(s, { kind: "path-remove", dir: row.dir }, `${row.dir} will be removed`)];
-    return [{ ...s, message: { text: notOurs(tilde(row.dir, s.data.home), row), error: true } }];
+    const op: EditOp = { kind: "path-remove", dir: row.dir };
+    if (row.pending) return [unstage(s, op, `change to ${short(s, row.dir)} dropped`)];
+    if (row.managed) return [stage(s, op, `${short(s, row.dir)} will be removed`)];
+    return [{ ...s, message: { text: notOurs(short(s, row.dir), row), error: true } }];
   }
-  if (key.ch === "o") return open(s, row);
+  if (key.ch === "o") {
+    if (!row.source) return [{ ...s, message: { text: "not added by a startup file, nothing to open", error: true } }];
+    return [s, { kind: "open", at: row.source }];
+  }
   return [s];
 }
 
 function notOurs(what: string, row: { by: string; source?: Location }): string {
   if (row.source) return `${what} comes from ${row.by}, not rcenv: press o to open that line`;
   return `${what} ${row.by === "(inherited)" ? "comes from the program that started this shell" : "is set by login or bash itself"}`;
-}
-
-function open(s: State, row: { source?: Location }): [State, Effect?] {
-  if (!row.source) return [{ ...s, message: { text: "not set by a startup file, nothing to open", error: true } }];
-  return [s, { kind: "open", at: row.source }];
 }
 
 export function handleKey(state: State, key: Key): [State, Effect?] {
@@ -249,19 +358,17 @@ export function handleKey(state: State, key: Key): [State, Effect?] {
     return [s, { kind: "quit" }];
   }
   if (key.name === "escape") return [{ ...s, filter: "" }];
-  if (key.name === "tab" || key.ch === "1" || key.ch === "2") {
-    const tab: Tab = key.ch === "1" ? "vars" : key.ch === "2" ? "path" : s.tab === "vars" ? "path" : "vars";
-    return [{ ...s, tab }];
-  }
+  const count = tabs(s).length;
+  if (key.name === "tab") return [{ ...s, tab: (s.tab + 1) % count }];
+  if (key.ch && /^[1-9]$/.test(key.ch) && Number(key.ch) <= count) return [{ ...s, tab: Number(key.ch) - 1 }];
   if (key.ch === "?") return [{ ...s, help: true }];
   if (key.ch === "w") return s.ops.length ? [s, { kind: "write" }] : [{ ...s, message: { text: "nothing staged yet" } }];
   if (key.ch === "u") {
-    const last = s.ops.at(-1);
-    if (!last) return [{ ...s, message: { text: "nothing to undo" } }];
-    return [{ ...s, ops: s.ops.slice(0, -1), message: { text: "undone" } }];
+    if (!s.ops.length) return [{ ...s, message: { text: "nothing to undo" } }];
+    return [move({ ...s, ops: s.ops.slice(0, -1), message: { text: "undone" } }, cursorOf(s))];
   }
 
-  const at = s.cursor[s.tab];
+  const at = cursorOf(s);
   switch (key.name) {
     case "up":
       return [move(s, at - 1)];
@@ -281,7 +388,8 @@ export function handleKey(state: State, key: Key): [State, Effect?] {
   if (key.ch === "g") return [move(s, 0)];
   if (key.ch === "G") return [move(s, Infinity)];
 
-  const [next, effect] = s.tab === "vars" ? varKey(s, key) : pathKey(s, key);
+  const t = currentTab(s);
+  const [next, effect] = t.kind === "vars" ? varKey(s, key) : t.kind === "path" ? pathKey(s, key) : dotenvKey(s, key, t.file);
   // staging can add or remove rows: keep the cursor in range
-  return [move(next, next.cursor[next.tab]), effect];
+  return [move(next, cursorOf(next)), effect];
 }

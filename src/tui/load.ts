@@ -1,12 +1,32 @@
 // What `rcenv edit` shows: the current environment and PATH, annotated from a trace.
 import { envRows, origin, pathEntries } from "../analyze.ts";
+import { compareDotenv, dotenvProblems, parseDotenv } from "../dotenv.ts";
 import { readIfExists } from "../edit.ts";
 import { where } from "../format.ts";
 import { parseManaged, type Locations } from "../managed.ts";
 import type { Assignment, Trace } from "../model.ts";
-import type { Data, PathRow, VarRow } from "./state.ts";
+import type { Data, DotenvData, PathRow, VarRow } from "./state.ts";
 
-export function loadData(trace: Trace, env: Record<string, string | undefined>, loc: Locations): Data {
+/** A .env file's keys compared with the shell; a missing file loads empty (it is created on write). */
+export function loadDotenv(file: string, env: Record<string, string | undefined>): DotenvData {
+  const text = readIfExists(file);
+  const doc = parseDotenv(text ?? "");
+  const problems = dotenvProblems(doc);
+  const counts = new Map<string, number>();
+  for (const l of doc.lines) if (l.kind === "entry") counts.set(l.key!, (counts.get(l.key!) ?? 0) + 1);
+  const rows = compareDotenv(doc, env).map((k) => ({
+    key: k.key,
+    value: k.value,
+    line: k.line,
+    status: k.status,
+    current: k.current,
+    count: counts.get(k.key) ?? 1,
+    problem: problems.find((p) => p.key === k.key)?.message,
+  }));
+  return { file, exists: text !== undefined, rows, problems: problems.length };
+}
+
+export function loadData(trace: Trace, env: Record<string, string | undefined>, loc: Locations, dotenvFiles: string[] = []): Data {
   const lines = parseManaged(readIfExists(loc.managed) ?? "", loc.home);
   const managedVars = new Set(lines.flatMap((l) => (l.kind === "var" ? [l.name!] : [])));
   const managedDirs = new Set(lines.flatMap((l) => (l.kind === "path" ? [l.dir!] : [])));
@@ -37,5 +57,5 @@ export function loadData(trace: Trace, env: Record<string, string | undefined>, 
   for (const dir of managedDirs)
     if (!path.some((p) => p.dir === dir)) path.push({ dir, by: "rcenv (new shells)", managed: true, exists: true });
 
-  return { home: loc.home, vars, path };
+  return { home: loc.home, vars, path, dotenv: dotenvFiles.map((f) => loadDotenv(f, env)) };
 }

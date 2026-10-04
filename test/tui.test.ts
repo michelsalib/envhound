@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { editorCommand } from "../src/tui/terminal.ts";
-import { handleKey, initialState, pathViews, varViews, type Data, type Key, type State } from "../src/tui/state.ts";
+import { dotenvViews, handleKey, initialState, pathViews, varViews, type Data, type Key, type State } from "../src/tui/state.ts";
 import { render } from "../src/tui/view.ts";
 
+const ENV = join(process.cwd(), ".env");
 const data = (): Data => ({
   home: "/home/u",
   vars: [
@@ -19,6 +20,18 @@ const data = (): Data => ({
     { dir: "/home/u/bin", by: "rcenv", managed: true, exists: true },
     { dir: "/usr/bin", by: "(initial)", managed: false, exists: true },
     { dir: "/gone", by: "~/.profile:9", source: { file: "/home/u/.profile", line: 9 }, managed: false, exists: false },
+  ],
+  dotenv: [
+    {
+      file: ENV,
+      exists: true,
+      problems: 1,
+      rows: [
+        { key: "PORT", value: "3000", line: 1, status: "new", count: 1 },
+        { key: "EDITOR", value: "nano", line: 2, status: "conflict", current: "vim", count: 1 },
+        { key: "DUP", value: "2", line: 4, status: "new", count: 2, problem: "duplicate of line 3; most loaders keep the last one" },
+      ],
+    },
   ],
 });
 
@@ -119,12 +132,59 @@ describe("quit, undo, write", () => {
   });
 });
 
+describe(".env tabs", () => {
+  const onEnv = () => initialState(data(), { tab: 2 });
+  const goToKey = (s: State, key: string) => ({ ...s, cursor: { ...s.cursor, [`dotenv:${ENV}`]: dotenvViews(s, ENV).findIndex((r) => r.key === key) } });
+
+  test("tab label, conflicts, duplicates", () => {
+    const screen = render(onEnv(), 120, 14, { color: false }).join("\n");
+    expect(screen).toContain(" 3 .env ");
+    expect(screen).toContain("shell has vim");
+    expect(screen).toContain("duplicate of line 3");
+  });
+
+  test("edits are staged against the file, separately from the shell", () => {
+    let [s] = press(goToKey(onEnv(), "EDITOR"), { name: "return" }, { ctrl: true, name: "u" }, ...type("code"), { name: "return" });
+    [s] = press(goTo({ ...s, tab: 0 }, "EDITOR"), { name: "return" }, { ctrl: true, name: "u" }, ...type("emacs"), { name: "return" });
+    expect(s.ops).toEqual([
+      { kind: "set", name: "EDITOR", value: "code", file: ENV },
+      { kind: "set", name: "EDITOR", value: "emacs", file: undefined },
+    ]);
+    expect(dotenvViews(s, ENV).find((r) => r.key === "EDITOR")).toMatchObject({ pending: "set", newValue: "code" });
+  });
+
+  test("new keys may use dots and dashes; d deletes, d again drops it", () => {
+    let [s] = press(onEnv(), { ch: "n" }, ...type("app.name"), { name: "return" }, ...type("x"), { name: "return" });
+    expect(s.ops).toEqual([{ kind: "set", name: "app.name", value: "x", file: ENV }]);
+    [s] = press(goToKey(s, "PORT"), { ch: "d" });
+    expect(s.ops.at(-1)).toEqual({ kind: "unset", name: "PORT", file: ENV });
+    [s] = press(s, { ch: "d" });
+    expect(s.ops).toHaveLength(1);
+  });
+
+  test("o opens the file at the key's line; new keys have none yet", () => {
+    expect(press(goToKey(onEnv(), "DUP"), { ch: "o" })[1]).toEqual({ kind: "open", at: { file: ENV, line: 4 } });
+    const [s] = press(onEnv(), { ch: "n" }, ...type("NEW"), { name: "return" }, { name: "return" });
+    const [opened, effect] = press(goToKey(s, "NEW"), { ch: "o" });
+    expect(effect).toBeUndefined();
+    expect(opened.message?.text).toContain("write first");
+  });
+
+  test("tab cycles through every tab, digits jump", () => {
+    const [s] = press(initialState(data()), { name: "tab" }, { name: "tab" });
+    expect(s.tab).toBe(2);
+    expect(press(s, { name: "tab" })[0].tab).toBe(0);
+    expect(press(s, { ch: "9" })[0].tab).toBe(2); // no tab 9
+  });
+});
+
 test("render fits the screen exactly", () => {
-  for (const [w, h] of [[40, 8], [80, 24], [200, 50]] as const) {
-    const lines = render(initialState(data()), w, h, { color: false });
-    expect(lines).toHaveLength(h);
-    for (const l of lines) expect([...l].length).toBeLessThanOrEqual(w);
-  }
+  for (const [w, h] of [[30, 8], [40, 8], [80, 24], [200, 50]] as const)
+    for (const tab of [0, 1, 2]) {
+      const lines = render(initialState(data(), { tab }), w, h, { color: false });
+      expect(lines).toHaveLength(h);
+      for (const l of lines) expect([...l].length).toBeLessThanOrEqual(w);
+    }
 });
 
 test("editorCommand", () => {
@@ -150,4 +210,29 @@ test.skipIf(spawnSync("script", ["--version"]).status !== 0)("rcenv edit in a re
   expect(r.stdout).toContain("+ export FROM_TUI=hello");
   expect(r.stdout).toContain("✓ a fresh login shell now gets FROM_TUI");
   expect(readFileSync(join(home, ".config", "rcenv", "env.sh"), "utf8")).toContain("export FROM_TUI=hello");
+}, 30_000);
+
+test.skipIf(spawnSync("script", ["--version"]).status !== 0)("rcenv edit FILE: .env and shell changes in one write", () => {
+  const fixture = join(import.meta.dir, "fixtures", "home");
+  const home = mkdtempSync(join(tmpdir(), "rcenv-edit-env-"));
+  for (const f of [".bash_profile", ".bashrc"]) copyFileSync(join(fixture, f), join(home, f));
+  const project = mkdtempSync(join(tmpdir(), "rcenv-project-"));
+  writeFileSync(join(project, ".env"), "# app\nA=1   # first\nB=2\n");
+  // starts on the .env tab: edit A, then tab 1: new shell variable, then write and confirm
+  const keys = [
+    "sleep 2",
+    "printf '\\r'", "sleep 0.3", "printf '\\025'", "printf '9\\r'",
+    "printf '1n'", "printf 'MIXED\\r'", "printf 'v\\r'", "sleep 0.3",
+    "printf 'w'", "sleep 3", "printf 'y\\r'", "sleep 4",
+  ].join("; ");
+  const cmd = `bun ${join(import.meta.dir, "..", "src", "cli.ts")} --home ${home} edit .env`;
+  const r = spawnSync("bash", ["-c", `(${keys}) | script -qec '${cmd}' /dev/null`], {
+    cwd: project,
+    encoding: "utf8",
+    env: { ...process.env, XDG_CONFIG_HOME: "", XDG_STATE_HOME: "", TERM: "xterm" },
+    timeout: 25_000,
+  });
+  expect(readFileSync(join(project, ".env"), "utf8")).toBe("# app\nA=9   # first\nB=2\n");
+  expect(readFileSync(join(home, ".config", "rcenv", "env.sh"), "utf8")).toContain("export MIXED=v");
+  expect(r.stdout).toContain("✓ a fresh login shell now gets MIXED");
 }, 30_000);

@@ -25,10 +25,13 @@ export function editorCommand(editor: string, at: Location): [string, string[]] 
  * Run the editor until the user writes or quits. Returns the staged ops to
  * write, or undefined. `load` is called again after the user edits a file.
  */
-export function runEditor(load: () => Data, opts: { color: boolean; showSecrets: boolean }): Promise<EditOp[] | undefined> {
+export function runEditor(
+  load: () => Data,
+  opts: { color: boolean; showSecrets: boolean; tab?: number },
+): Promise<EditOp[] | undefined> {
   const stdin = process.stdin;
   const stdout = process.stdout;
-  let state = initialState(load(), opts.showSecrets);
+  let state = initialState(load(), { showSecrets: opts.showSecrets, tab: opts.tab });
 
   return new Promise((resolve, reject) => {
     const draw = () => {
