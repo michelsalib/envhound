@@ -26,11 +26,11 @@ describe("generated scripts parse", () => {
   test.skipIf(!has("fish"))("fish", () => expect(spawnSync("fish", ["-n"], { input: completionScript("fish") }).status).toBe(0));
 
   test("bash completion end to end", () => {
-    // load the script with a stub `rcenv`, then complete `rcenv blame PA`
+    // load the script with a stub `envhound`, then complete `envhound blame PA`
     const script = `
-      rcenv() { bun ${process.cwd()}/src/cli.ts "$@"; }
+      envhound() { bun ${process.cwd()}/src/cli.ts "$@"; }
       ${completionScript("bash")}
-      COMP_WORDS=(rcenv blame PA); COMP_CWORD=2; _rcenv
+      COMP_WORDS=(envhound blame PA); COMP_CWORD=2; _envhound
       printf '%s\\n' "\${COMPREPLY[@]}"`;
     const r = spawnSync("bash", ["-c", script], { encoding: "utf8", env: { ...process.env, PAGER: "less" } });
     expect(r.stdout.split("\n")).toContain("PAGER");

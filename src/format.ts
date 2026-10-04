@@ -139,7 +139,7 @@ export function renderBlame(r: BlameReport, o: RenderOptions): string {
       lines.push(
         c.yellow(
           `! not effective: a fresh shell ends with ${r.name}=${v(r.fresh)}\n` +
-            `  so the last line above is a one-command prefix (${r.name}=x cmd), or something rcenv can't trace undid it`,
+            `  so the last line above is a one-command prefix (${r.name}=x cmd), or something envhound can't trace undid it`,
         ),
       );
       break;
@@ -164,7 +164,7 @@ function pathDiff(fresh: string | undefined, current: string | undefined, home: 
     extra.length ? `${extra.length} extra (${list(extra)})` : "",
     lost.length ? `${lost.length} missing (${list(lost)})` : "",
   ].filter(Boolean);
-  return (parts.join("; ") || "same entries, different order") + "\n  run 'rcenv path' to see each entry";
+  return (parts.join("; ") || "same entries, different order") + "\n  run 'envhound path' to see each entry";
 }
 
 export function renderPath(entries: PathEntry[], o: RenderOptions): string {

@@ -1,4 +1,4 @@
-// Quoting for the two formats rcenv writes: shell (bash/zsh) and .env.
+// Quoting for the two formats envhound writes: shell (bash/zsh) and .env.
 import type { Quote } from "./dotenv.ts";
 
 const SAFE = /^[A-Za-z0-9_./:@%+,=-]+$/;

@@ -30,8 +30,8 @@ jobs:
       - name: Release files
         run: |
           mkdir release
-          cp dist/rcenv.js install.sh release/
-          (cd release && sha256sum rcenv.js install.sh > SHA256SUMS)
+          cp dist/envhound.js install.sh release/
+          (cd release && sha256sum envhound.js install.sh > SHA256SUMS)
       # trusted publishing (OIDC) once configured on npmjs.com; NPM_TOKEN until then
       - run: npm publish --provenance --access public
         env:

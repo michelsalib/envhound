@@ -18,5 +18,5 @@ jobs:
       - run: bun run typecheck
       - run: bun test
       - run: bun run build
-      - run: node dist/rcenv.js --version
+      - run: node dist/envhound.js --version
       - run: shellcheck install.sh

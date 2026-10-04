@@ -1,5 +1,5 @@
-// State and key handling for `rcenv edit`. Pure: no terminal access, so it is
-// tested directly. Changes are only staged here; writing reuses `rcenv set`.
+// State and key handling for `envhound edit`. Pure: no terminal access, so it is
+// tested directly. Changes are only staged here; writing reuses `envhound set`.
 import { isAbsolute, resolve } from "node:path";
 import { isSecret, tilde } from "../format.ts";
 import type { Location } from "../model.ts";
@@ -11,7 +11,7 @@ export interface VarRow {
   /** "~/.profile:3", "(inherited)", ... */
   by: string;
   source?: Location;
-  /** set by rcenv's own file, so rcenv can change or remove it */
+  /** set by envhound's own file, so envhound can change or remove it */
   managed: boolean;
 }
 
@@ -142,7 +142,7 @@ export function varViews(s: State): VarView[] {
       row.pending = "set";
       row.newValue = op.value;
     } else {
-      rows.push({ name: op.name, value: undefined, by: "rcenv", managed: true, pending: "new", newValue: op.value });
+      rows.push({ name: op.name, value: undefined, by: "envhound", managed: true, pending: "new", newValue: op.value });
     }
   }
   rows.sort((a, b) => a.name.localeCompare(b.name));
@@ -155,7 +155,7 @@ export function pathViews(s: State): PathView[] {
     if (op.kind === "path-remove") {
       for (const r of rows) if (r.dir === op.dir) r.pending = "remove";
     } else if (op.kind === "path-add") {
-      const row: PathView = { dir: op.dir, by: "rcenv", managed: true, exists: true, pending: "add" };
+      const row: PathView = { dir: op.dir, by: "envhound", managed: true, exists: true, pending: "add" };
       if (op.position === "front") rows.unshift(row);
       else rows.push(row);
     }
@@ -300,10 +300,10 @@ function varKey(s: State, key: Key): [State, Effect?] {
   return pairKey(s, key, pair, undefined, () => {
     const r = row!;
     const op: EditOp = { kind: "unset", name: r.name };
-    // d on a staged change drops it, except on rcenv's own variables where it stages the removal
+    // d on a staged change drops it, except on envhound's own variables where it stages the removal
     if (r.pending === "new" || r.pending === "unset" || (r.pending === "set" && !r.managed))
       return unstage(s, op, `change to ${r.name} dropped`);
-    if (r.managed) return stage(s, op, `${r.name} will be removed from rcenv's file`);
+    if (r.managed) return stage(s, op, `${r.name} will be removed from envhound's file`);
     return { ...s, message: { text: notOurs(r.name, r), error: true } };
   });
 }
@@ -340,7 +340,7 @@ function pathKey(s: State, key: Key): [State, Effect?] {
 }
 
 function notOurs(what: string, row: { by: string; source?: Location }): string {
-  if (row.source) return `${what} comes from ${row.by}, not rcenv: press o to open that line`;
+  if (row.source) return `${what} comes from ${row.by}, not envhound: press o to open that line`;
   return `${what} ${row.by === "(inherited)" ? "comes from the program that started this shell" : "is set by login or bash itself"}`;
 }
 

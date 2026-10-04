@@ -59,7 +59,7 @@ export async function confirm(question: string): Promise<boolean> {
 /** Write every change, backing up existing files first. Refuses if a file changed since it was read. */
 export function applyChanges(changes: FileChange[], backupDir: string): string[] {
   for (const c of changes)
-    if (readIfExists(c.path) !== c.before) throw new Error(`${c.path} changed while rcenv was running; nothing was written`);
+    if (readIfExists(c.path) !== c.before) throw new Error(`${c.path} changed while envhound was running; nothing was written`);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backups: string[] = [];
   for (const c of changes) {

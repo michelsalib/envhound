@@ -12,12 +12,12 @@ const data = (): Data => ({
   home: "/home/u",
   vars: [
     { name: "EDITOR", value: "vim", by: "~/.profile:3", source: { file: "/home/u/.profile", line: 3 }, managed: false },
-    { name: "MINE", value: "1", by: "rcenv", source: { file: "/home/u/.config/rcenv/env.sh", line: 4 }, managed: true },
-    { name: "API_TOKEN", value: "s3cret", by: "rcenv", managed: true },
+    { name: "MINE", value: "1", by: "envhound", source: { file: "/home/u/.config/envhound/env.sh", line: 4 }, managed: true },
+    { name: "API_TOKEN", value: "s3cret", by: "envhound", managed: true },
     { name: "TERM", value: "xterm", by: "(inherited)", managed: false },
   ],
   path: [
-    { dir: "/home/u/bin", by: "rcenv", managed: true, exists: true },
+    { dir: "/home/u/bin", by: "envhound", managed: true, exists: true },
     { dir: "/usr/bin", by: "(initial)", managed: false, exists: true },
     { dir: "/gone", by: "~/.profile:9", source: { file: "/home/u/.profile", line: 9 }, managed: false, exists: false },
   ],
@@ -63,7 +63,7 @@ describe("variables tab", () => {
     expect(varViews(s).find((r) => r.name === "NEW_ONE")?.pending).toBe("new");
   });
 
-  test("d unsets rcenv's variables, refuses others and says where they come from", () => {
+  test("d unsets envhound's variables, refuses others and says where they come from", () => {
     let [s] = press(goTo(initialState(data()), "MINE"), { ch: "d" });
     expect(s.ops).toEqual([{ kind: "unset", name: "MINE" }]);
     [s] = press(goTo(s, "EDITOR"), { ch: "d" });
@@ -105,8 +105,8 @@ describe("PATH tab", () => {
     expect(s.ops).toEqual([]);
   });
 
-  test("remove only what rcenv added", () => {
-    let [s] = press(initialState(data()), { ch: "2" }, { ch: "d" }); // /home/u/bin, rcenv's
+  test("remove only what envhound added", () => {
+    let [s] = press(initialState(data()), { ch: "2" }, { ch: "d" }); // /home/u/bin, envhound's
     expect(s.ops).toEqual([{ kind: "path-remove", dir: "/home/u/bin" }]);
     [s] = press(s, { ch: "G" }, { ch: "d" }); // /gone, from ~/.profile
     expect(s.message?.text).toContain("press o to open");
@@ -194,10 +194,10 @@ test("editorCommand", () => {
   expect(editorCommand("/usr/bin/nano -w", at)).toEqual(["/usr/bin/nano", ["-w", "+7", "/f"]]);
 });
 
-test.skipIf(spawnSync("script", ["--version"]).status !== 0)("rcenv edit in a real terminal: stage, write, verify", () => {
-  // `script` gives rcenv a pty; keys are fed through it, `y` answers the write confirmation
+test.skipIf(spawnSync("script", ["--version"]).status !== 0)("envhound edit in a real terminal: stage, write, verify", () => {
+  // `script` gives envhound a pty; keys are fed through it, `y` answers the write confirmation
   const fixture = join(import.meta.dir, "fixtures", "home");
-  const home = mkdtempSync(join(tmpdir(), "rcenv-edit-"));
+  const home = mkdtempSync(join(tmpdir(), "envhound-edit-"));
   for (const f of [".bash_profile", ".bashrc"]) copyFileSync(join(fixture, f), join(home, f));
   // keys arrive with pauses, as typed: the editor first, then the confirmation after it
   const keys = `sleep 2; printf 'nFROM_TUI\\rhello\\rw'; sleep 3; printf 'y\\r'; sleep 4`;
@@ -209,14 +209,14 @@ test.skipIf(spawnSync("script", ["--version"]).status !== 0)("rcenv edit in a re
   });
   expect(r.stdout).toContain("+ export FROM_TUI=hello");
   expect(r.stdout).toContain("✓ a fresh login shell now gets FROM_TUI");
-  expect(readFileSync(join(home, ".config", "rcenv", "env.sh"), "utf8")).toContain("export FROM_TUI=hello");
+  expect(readFileSync(join(home, ".config", "envhound", "env.sh"), "utf8")).toContain("export FROM_TUI=hello");
 }, 30_000);
 
-test.skipIf(spawnSync("script", ["--version"]).status !== 0)("rcenv edit FILE: .env and shell changes in one write", () => {
+test.skipIf(spawnSync("script", ["--version"]).status !== 0)("envhound edit FILE: .env and shell changes in one write", () => {
   const fixture = join(import.meta.dir, "fixtures", "home");
-  const home = mkdtempSync(join(tmpdir(), "rcenv-edit-env-"));
+  const home = mkdtempSync(join(tmpdir(), "envhound-edit-env-"));
   for (const f of [".bash_profile", ".bashrc"]) copyFileSync(join(fixture, f), join(home, f));
-  const project = mkdtempSync(join(tmpdir(), "rcenv-project-"));
+  const project = mkdtempSync(join(tmpdir(), "envhound-project-"));
   writeFileSync(join(project, ".env"), "# app\nA=1   # first\nB=2\n");
   // starts on the .env tab: edit A, then tab 1: new shell variable, then write and confirm
   const keys = [
@@ -233,6 +233,6 @@ test.skipIf(spawnSync("script", ["--version"]).status !== 0)("rcenv edit FILE: .
     timeout: 25_000,
   });
   expect(readFileSync(join(project, ".env"), "utf8")).toBe("# app\nA=9   # first\nB=2\n");
-  expect(readFileSync(join(home, ".config", "rcenv", "env.sh"), "utf8")).toContain("export MIXED=v");
+  expect(readFileSync(join(home, ".config", "envhound", "env.sh"), "utf8")).toContain("export MIXED=v");
   expect(r.stdout).toContain("✓ a fresh login shell now gets MIXED");
 }, 30_000);

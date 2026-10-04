@@ -53,7 +53,7 @@ describe("compareDotenv", () => {
   });
 });
 
-test("rcenv dotenv: conflicts point at the startup line, secrets masked, exit 1 on problems", () => {
+test("envhound dotenv: conflicts point at the startup line, secrets masked, exit 1 on problems", () => {
   const home = join(import.meta.dir, "fixtures", "home");
   const r = spawnSync("bun", ["src/cli.ts", "--home", home, "--json", "dotenv", "test/fixtures/sample.env"], {
     cwd: join(import.meta.dir, ".."),

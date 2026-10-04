@@ -4,11 +4,11 @@ import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-export const REPO = "michelsalib/rcenv";
-const REGISTRY = "https://registry.npmjs.org/rcenv/latest";
+export const REPO = "michelsalib/envhound";
+const REGISTRY = "https://registry.npmjs.org/envhound/latest";
 export const WEEK = 7 * 24 * 3600 * 1000;
 
-/** How this copy of rcenv was installed, which decides how to update it. */
+/** How this copy of envhound was installed, which decides how to update it. */
 export type InstallKind = "npx" | "bunx" | "bun" | "npm" | "standalone" | "dev";
 
 export function installKind(script: string): InstallKind {
@@ -17,7 +17,7 @@ export function installKind(script: string): InstallKind {
   if (p.includes("/bunx-")) return "bunx";
   if (p.includes("/.bun/install/global/")) return "bun";
   if (p.includes("/node_modules/")) return "npm";
-  // a checkout: src/cli.ts or dist/rcenv.js; install.sh installs a file named plain `rcenv`
+  // a checkout: src/cli.ts or dist/envhound.js; install.sh installs a file named plain `envhound`
   if (/\.[cm]?[jt]s$/.test(p)) return "dev";
   return "standalone";
 }
@@ -25,15 +25,15 @@ export function installKind(script: string): InstallKind {
 export function upgradeCommand(kind: InstallKind): string {
   switch (kind) {
     case "npx":
-      return "npx rcenv@latest";
+      return "npx envhound@latest";
     case "bunx":
-      return "bunx rcenv@latest";
+      return "bunx envhound@latest";
     case "bun":
-      return "bun add -g rcenv@latest";
+      return "bun add -g envhound@latest";
     case "npm":
-      return "npm install -g rcenv@latest";
+      return "npm install -g envhound@latest";
     case "standalone":
-      return "rcenv upgrade";
+      return "envhound upgrade";
     case "dev":
       return "git pull && bun run build";
   }
@@ -100,7 +100,7 @@ export function updateNotice(current: string, script: string, stateFile: string,
     }
     if (!notify) return undefined;
     writeState(stateFile, { ...readState(stateFile), notifiedAt: now });
-    return `rcenv ${state.latest} is available (you have ${current}). Update with: ${upgradeCommand(kind)}`;
+    return `envhound ${state.latest} is available (you have ${current}). Update with: ${upgradeCommand(kind)}`;
   } catch {
     return undefined;
   }
@@ -115,7 +115,7 @@ export async function fetchLatest(stateFile: string): Promise<void> {
   writeState(stateFile, { ...readState(stateFile), checkedAt: Date.now(), latest: version });
 }
 
-/** Where release files are downloaded from; RCENV_BASE_URL overrides it (mirrors, tests). */
+/** Where release files are downloaded from; ENVHOUND_BASE_URL overrides it (mirrors, tests). */
 export function installerUrl(env: Record<string, string | undefined>): string {
-  return `${env.RCENV_BASE_URL ?? `https://github.com/${REPO}/releases/latest/download`}/install.sh`;
+  return `${env.ENVHOUND_BASE_URL ?? `https://github.com/${REPO}/releases/latest/download`}/install.sh`;
 }

@@ -61,22 +61,22 @@ const KEYS: Record<TabDef["kind"], string> = {
 };
 
 const HELP = [
-  "rcenv edit: stage changes, then w to review them as a diff and write.",
+  "envhound edit: stage changes, then w to review them as a diff and write.",
   "",
   "Variables tab",
-  "  enter / e   edit the value (rcenv's line comes last, so it wins in login shells)",
+  "  enter / e   edit the value (envhound's line comes last, so it wins in login shells)",
   "  n           new variable",
-  "  d           unset a variable rcenv set, or drop a staged change",
+  "  d           unset a variable envhound set, or drop a staged change",
   "  o           open your editor at the line that sets it, then reload",
   "  /           filter by name or value; esc clears",
   "  s           show or hide secret values",
   "",
   "PATH tab",
   "  a / A       add a directory at the front / end of PATH",
-  "  d           remove a directory rcenv added, or drop a staged change",
+  "  d           remove a directory envhound added, or drop a staged change",
   "  o           open the line that adds it",
   "",
-  ".env tabs (rcenv edit FILE...; ./.env is opened when it exists)",
+  ".env tabs (envhound edit FILE...; ./.env is opened when it exists)",
   "  enter / e   edit a value: only that line changes, comments and quoting are kept",
   "  n / d       add a key / delete every line for a key",
   "  o           open the file at the key's line",
@@ -108,7 +108,7 @@ function header(s: State, width: number, c: Styles): string {
   const stagedText = s.ops.length ? `${s.ops.length} staged · w to write` : "nothing staged";
   const staged = s.ops.length ? c.yellow(stagedText) : c.dim(stagedText);
   // drop parts that don't fit: title, then staged count, then the other tabs
-  if (12 + tabsWidth + 3 + stagedText.length <= width) return `${c.bold("rcenv edit")}  ${styled}   ${staged}`;
+  if (15 + tabsWidth + 3 + stagedText.length <= width) return `${c.bold("envhound edit")}  ${styled}   ${staged}`;
   if (tabsWidth + 1 + stagedText.length <= width) return `${styled} ${staged}`;
   if (tabsWidth <= width) return styled;
   return c.inverse(cell(labels[s.tab]!.trim(), width));
@@ -195,7 +195,7 @@ function varDetail(s: State): string {
   const r = varViews(s)[cursorOf(s)];
   if (!r) return "";
   const from = r.managed
-    ? "set by rcenv"
+    ? "set by envhound"
     : r.source
       ? `set at ${r.by}`
       : r.by === "(inherited)"
@@ -227,7 +227,7 @@ function pathDetail(s: State): string {
   const r = pathViews(s)[cursorOf(s)];
   if (!r) return "";
   const from = r.managed
-    ? "added by rcenv"
+    ? "added by envhound"
     : r.source
       ? `added at ${r.by}`
       : r.by === "(initial)"
@@ -283,7 +283,7 @@ function dotenvLines(s: State, file: string, width: number, height: number, c: S
 function dotenvDetail(s: State, file: string): string {
   const data = s.data.dotenv.find((d) => d.file === file);
   const where = tilde(file, s.data.home);
-  const problems = data?.problems ? ` · ${data.problems} problem(s), see rcenv dotenv` : "";
+  const problems = data?.problems ? ` · ${data.problems} problem(s), see envhound dotenv` : "";
   const r = dotenvViews(s, file)[cursorOf(s)];
   if (!r) return `${where}${data?.exists ? "" : " (new file)"}${problems}`;
   const at = r.line ? `line ${r.line} of ${where}` : `new in ${where}`;

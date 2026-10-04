@@ -1,4 +1,4 @@
-// Terminal driver for `rcenv edit`: raw keys in, full redraws out, on the
+// Terminal driver for `envhound edit`: raw keys in, full redraws out, on the
 // alternate screen so the user's scrollback is left as it was.
 import { spawnSync } from "node:child_process";
 import { emitKeypressEvents } from "node:readline";

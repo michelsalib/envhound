@@ -1,5 +1,5 @@
 // Shell completion. The scripts are thin: on every <Tab> they call
-// `rcenv __complete <words...>`, so candidates (like variable names) are always live.
+// `envhound __complete <words...>`, so candidates (like variable names) are always live.
 
 export const COMMANDS: Record<string, string> = {
   list: "every exported variable and where it is set",
@@ -7,10 +7,10 @@ export const COMMANDS: Record<string, string> = {
   path: "PATH entries, who added them, missing and duplicates",
   dotenv: "check .env files against your shell",
   set: "set variables for future login shells (or a .env file)",
-  unset: "remove variables rcenv set",
+  unset: "remove variables envhound set",
   edit: "interactive editor for variables, PATH and .env files",
   completion: "print a shell completion script",
-  upgrade: "update rcenv to the latest release",
+  upgrade: "update envhound to the latest release",
 };
 
 const FLAGS: Record<string, string> = {
@@ -31,10 +31,10 @@ export type CompletionShell = (typeof SHELLS)[number];
 /** Flags that take a value: the next word is not a positional. */
 const TAKES_VALUE = new Set(["--home", "--file", "-f"]);
 
-const PATH_COMMANDS: Record<string, string> = { add: "put a directory in PATH", remove: "remove a directory rcenv added" };
+const PATH_COMMANDS: Record<string, string> = { add: "put a directory in PATH", remove: "remove a directory envhound added" };
 
 /**
- * Candidates for the last word of `words` (the words after `rcenv`, the last one being typed),
+ * Candidates for the last word of `words` (the words after `envhound`, the last one being typed),
  * as `name` or `name<TAB>description`.
  */
 export function complete(words: string[], env: Record<string, string | undefined>): string[] {
@@ -59,45 +59,45 @@ export function complete(words: string[], env: Record<string, string | undefined
 export function completionScript(shell: CompletionShell): string {
   switch (shell) {
     case "bash":
-      return `# rcenv completion for bash. Add to ~/.bashrc:  eval "$(rcenv completion bash)"
-_rcenv() {
+      return `# envhound completion for bash. Add to ~/.bashrc:  eval "$(envhound completion bash)"
+_envhound() {
     local cur=\${COMP_WORDS[COMP_CWORD]}
     case \${COMP_WORDS[COMP_CWORD-1]} in
         --home) COMPREPLY=($(compgen -d -- "$cur")); return ;;
         --file|-f) COMPREPLY=($(compgen -f -- "$cur")); return ;;
     esac
     local IFS=$'\\n'
-    COMPREPLY=($(rcenv __complete "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null | cut -f1))
+    COMPREPLY=($(envhound __complete "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null | cut -f1))
     [[ \${COMPREPLY[0]} == *= ]] && compopt -o nospace
 }
-complete -o default -F _rcenv rcenv
+complete -o default -F _envhound envhound
 `;
     case "zsh":
-      return `# rcenv completion for zsh. Add to ~/.zshrc (after compinit):  eval "$(rcenv completion zsh)"
-_rcenv() {
+      return `# envhound completion for zsh. Add to ~/.zshrc (after compinit):  eval "$(envhound completion zsh)"
+_envhound() {
     case \${words[CURRENT-1]} in
         --home) _directories; return ;;
         --file|-f) _files; return ;;
     esac
     local -a lines candidates
     local line name
-    lines=("\${(@f)$(rcenv __complete "\${(@)words[2,CURRENT]}" 2>/dev/null)}")
+    lines=("\${(@f)$(envhound __complete "\${(@)words[2,CURRENT]}" 2>/dev/null)}")
     for line in $lines; do
         [[ -n $line ]] || continue
         name=\${\${line%%$'\\t'*}//:/\\\\:}
         if [[ $line == *$'\\t'* ]]; then candidates+=("$name:\${line#*$'\\t'}"); else candidates+=("$name"); fi
     done
-    if (( \${#candidates} )); then _describe rcenv candidates; else _files; fi
+    if (( \${#candidates} )); then _describe envhound candidates; else _files; fi
 }
-compdef _rcenv rcenv
+compdef _envhound envhound
 `;
     case "fish":
-      return `# rcenv completion for fish. Save as ~/.config/fish/completions/rcenv.fish:
-#   rcenv completion fish > ~/.config/fish/completions/rcenv.fish
-complete -c rcenv -f -a '(rcenv __complete (commandline -opc)[2..-1] (commandline -ct) 2>/dev/null)'
-complete -c rcenv -n '__fish_seen_subcommand_from dotenv' -F
-complete -c rcenv -l file -s f -r -F
-complete -c rcenv -l home -x -a '(__fish_complete_directories (commandline -ct))'
+      return `# envhound completion for fish. Save as ~/.config/fish/completions/envhound.fish:
+#   envhound completion fish > ~/.config/fish/completions/envhound.fish
+complete -c envhound -f -a '(envhound __complete (commandline -opc)[2..-1] (commandline -ct) 2>/dev/null)'
+complete -c envhound -n '__fish_seen_subcommand_from dotenv' -F
+complete -c envhound -l file -s f -r -F
+complete -c envhound -l home -x -a '(__fish_complete_directories (commandline -ct))'
 `;
   }
 }

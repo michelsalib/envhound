@@ -1,5 +1,5 @@
 add_path() { case ":$PATH:" in *":$1:"*) ;; *) PATH="$PATH:$1" ;; esac; }
-add_path /opt/rcenv-test/bin
+add_path /opt/envhound-test/bin
 PATH+=":$HOME/bin"
 export QUOTED="it's \"quoted\""
 MULTI=$'line1\nline2'; export MULTI

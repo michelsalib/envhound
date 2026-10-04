@@ -1,4 +1,4 @@
-// What `rcenv edit` shows: the current environment and PATH, annotated from a trace.
+// What `envhound edit` shows: the current environment and PATH, annotated from a trace.
 import { envRows, origin, pathEntries } from "../analyze.ts";
 import { compareDotenv, dotenvProblems, parseDotenv } from "../dotenv.ts";
 import { readIfExists } from "../edit.ts";
@@ -30,7 +30,7 @@ export function loadData(trace: Trace, env: Record<string, string | undefined>, 
   const lines = parseManaged(readIfExists(loc.managed) ?? "", loc.home);
   const managedVars = new Set(lines.flatMap((l) => (l.kind === "var" ? [l.name!] : [])));
   const managedDirs = new Set(lines.flatMap((l) => (l.kind === "path" ? [l.dir!] : [])));
-  const by = (a: Assignment) => (a.at.file === loc.managed ? "rcenv" : where(a, loc.home));
+  const by = (a: Assignment) => (a.at.file === loc.managed ? "envhound" : where(a, loc.home));
 
   const vars: VarRow[] = envRows(trace, env)
     .filter((r) => r.name !== "PATH")
@@ -41,10 +41,10 @@ export function loadData(trace: Trace, env: Record<string, string | undefined>, 
       source: r.last && origin(r.last),
       managed: managedVars.has(r.name),
     }));
-  // set by rcenv but not in this shell yet (it started before)
+  // set by envhound but not in this shell yet (it started before)
   for (const name of managedVars)
     if (!vars.some((v) => v.name === name) && name !== "PATH")
-      vars.push({ name, value: trace.final[name], by: "rcenv (new shells)", managed: true });
+      vars.push({ name, value: trace.final[name], by: "envhound (new shells)", managed: true });
 
   const path: PathRow[] = pathEntries(trace, env.PATH ?? "").map((e) => ({
     dir: e.dir,
@@ -55,7 +55,7 @@ export function loadData(trace: Trace, env: Record<string, string | undefined>, 
     duplicateOf: e.duplicateOf,
   }));
   for (const dir of managedDirs)
-    if (!path.some((p) => p.dir === dir)) path.push({ dir, by: "rcenv (new shells)", managed: true, exists: true });
+    if (!path.some((p) => p.dir === dir)) path.push({ dir, by: "envhound (new shells)", managed: true, exists: true });
 
   return { home: loc.home, vars, path, dotenv: dotenvFiles.map((f) => loadDotenv(f, env)) };
 }

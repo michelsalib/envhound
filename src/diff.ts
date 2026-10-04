@@ -1,4 +1,4 @@
-// Minimal line diff for previews. Files rcenv edits are small, so plain LCS is fine.
+// Minimal line diff for previews. Files envhound edits are small, so plain LCS is fine.
 
 export interface DiffLine {
   op: " " | "-" | "+";

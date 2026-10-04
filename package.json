@@ -1,5 +1,5 @@
 {
-  "name": "rcenv",
+  "name": "envhound",
   "version": "0.1.0",
   "description": "Find which startup file sets each environment variable, and audit your PATH",
   "keywords": [
@@ -15,13 +15,13 @@
   "author": "Michel Salib",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/michelsalib/rcenv.git"
+    "url": "git+https://github.com/michelsalib/envhound.git"
   },
-  "homepage": "https://github.com/michelsalib/rcenv#readme",
-  "bugs": "https://github.com/michelsalib/rcenv/issues",
+  "homepage": "https://github.com/michelsalib/envhound#readme",
+  "bugs": "https://github.com/michelsalib/envhound/issues",
   "type": "module",
   "bin": {
-    "rcenv": "dist/rcenv.js"
+    "envhound": "dist/envhound.js"
   },
   "files": [
     "dist"
@@ -31,7 +31,7 @@
   },
   "scripts": {
     "dev": "bun src/cli.ts",
-    "build": "bun build src/cli.ts --target=node --minify --outfile dist/rcenv.js",
+    "build": "bun build src/cli.ts --target=node --minify --outfile dist/envhound.js",
     "test": "bun test",
     "typecheck": "tsc",
     "prepublishOnly": "bun run typecheck && bun run build && bun test"

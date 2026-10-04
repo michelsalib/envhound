@@ -13,7 +13,7 @@ beforeAll(() => {
 });
 
 test.skipIf(!hasNode)("built CLI runs on node", () => {
-  const r = spawnSync("node", ["dist/rcenv.js", "--home", home, "--json", "blame", "API_TOKEN"], { cwd: root, encoding: "utf8" });
+  const r = spawnSync("node", ["dist/envhound.js", "--home", home, "--json", "blame", "API_TOKEN"], { cwd: root, encoding: "utf8" });
   expect(r.status).toBe(0);
   const out = JSON.parse(r.stdout);
   expect(out.status).toBe("effective");
@@ -21,7 +21,7 @@ test.skipIf(!hasNode)("built CLI runs on node", () => {
 });
 
 test.skipIf(!hasNode)("unknown command exits with usage error", () => {
-  const r = spawnSync("node", ["dist/rcenv.js", "nope"], { cwd: root, encoding: "utf8" });
+  const r = spawnSync("node", ["dist/envhound.js", "nope"], { cwd: root, encoding: "utf8" });
   expect(r.status).toBe(2);
   expect(r.stderr).toContain("unknown command");
 });

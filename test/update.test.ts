@@ -1,4 +1,4 @@
-// The weekly update check, install.sh and `rcenv upgrade`. Installs use a local
+// The weekly update check, install.sh and `envhound upgrade`. Installs use a local
 // file:// "release" built from the source, so nothing touches the network.
 import { beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
@@ -11,19 +11,19 @@ import { decide, installKind, newer, readState, updateNotice, upgradeCommand, WE
 
 describe("installKind", () => {
   const cases: [string, string][] = [
-    ["/home/u/.npm/_npx/0d1f/node_modules/rcenv/dist/rcenv.js", "npx"],
-    ["/tmp/bunx-1000-rcenv@latest/node_modules/rcenv/dist/rcenv.js", "bunx"],
-    ["/home/u/.bun/install/global/node_modules/rcenv/dist/rcenv.js", "bun"],
-    ["/usr/lib/node_modules/rcenv/dist/rcenv.js", "npm"],
-    ["/home/u/.nvm/versions/node/v24/lib/node_modules/rcenv/dist/rcenv.js", "npm"],
-    ["/home/u/.local/bin/rcenv", "standalone"],
-    ["/home/u/projects/rcenv/src/cli.ts", "dev"],
-    ["/home/u/projects/rcenv/dist/rcenv.js", "dev"],
+    ["/home/u/.npm/_npx/0d1f/node_modules/envhound/dist/envhound.js", "npx"],
+    ["/tmp/bunx-1000-envhound@latest/node_modules/envhound/dist/envhound.js", "bunx"],
+    ["/home/u/.bun/install/global/node_modules/envhound/dist/envhound.js", "bun"],
+    ["/usr/lib/node_modules/envhound/dist/envhound.js", "npm"],
+    ["/home/u/.nvm/versions/node/v24/lib/node_modules/envhound/dist/envhound.js", "npm"],
+    ["/home/u/.local/bin/envhound", "standalone"],
+    ["/home/u/projects/envhound/src/cli.ts", "dev"],
+    ["/home/u/projects/envhound/dist/envhound.js", "dev"],
   ];
   for (const [path, kind] of cases) test(kind + ": " + path, () => expect(installKind(path)).toBe(kind as never));
   test("commands", () => {
-    expect(upgradeCommand("npx")).toBe("npx rcenv@latest");
-    expect(upgradeCommand("standalone")).toBe("rcenv upgrade");
+    expect(upgradeCommand("npx")).toBe("npx envhound@latest");
+    expect(upgradeCommand("standalone")).toBe("envhound upgrade");
   });
 });
 
@@ -52,8 +52,8 @@ describe("decide", () => {
 });
 
 describe("updateNotice", () => {
-  const dir = mkdtempSync(join(tmpdir(), "rcenv-update-"));
-  const script = join(dir, "rcenv");
+  const dir = mkdtempSync(join(tmpdir(), "envhound-update-"));
+  const script = join(dir, "envhound");
   writeFileSync(script, "");
   const state = join(dir, "state", "update.json");
   const now = 100 * WEEK;
@@ -62,7 +62,7 @@ describe("updateNotice", () => {
     // checked just now, so no background check starts
     spawnSync("mkdir", ["-p", dirname(state)]);
     writeFileSync(state, JSON.stringify({ checkedAt: now, latest: "9.0.0" }));
-    expect(updateNotice("0.1.0", script, state, now)).toBe("rcenv 9.0.0 is available (you have 0.1.0). Update with: rcenv upgrade");
+    expect(updateNotice("0.1.0", script, state, now)).toBe("envhound 9.0.0 is available (you have 0.1.0). Update with: envhound upgrade");
     expect(readState(state).notifiedAt).toBe(now);
     expect(updateNotice("0.1.0", script, state, now + 1000)).toBeUndefined();
     expect(updateNotice("0.1.0", script, state, now + WEEK - 1)).toBeUndefined();
@@ -82,58 +82,58 @@ describe("updateNotice", () => {
   });
 });
 
-describe("install.sh and rcenv upgrade", () => {
+describe("install.sh and envhound upgrade", () => {
   const root = join(import.meta.dir, "..");
-  const release = mkdtempSync(join(tmpdir(), "rcenv-release-"));
+  const release = mkdtempSync(join(tmpdir(), "envhound-release-"));
   const base = `file://${release}`;
   // completion files land in this home, never the real one
   const homeEnv = (home: string) => ({ HOME: home, XDG_DATA_HOME: "", XDG_CONFIG_HOME: "" });
   const hasFish = spawnSync("sh", ["-c", "command -v fish"]).status === 0;
   const run = (cmd: string, args: string[], env: Record<string, string> = {}) =>
-    spawnSync(cmd, args, { encoding: "utf8", env: { ...process.env, RCENV_NO_UPDATE_CHECK: "1", ...env } });
+    spawnSync(cmd, args, { encoding: "utf8", env: { ...process.env, ENVHOUND_NO_UPDATE_CHECK: "1", ...env } });
 
   beforeAll(() => {
-    const r = spawnSync("bun", ["build", "src/cli.ts", "--target=node", "--minify", "--outfile", join(release, "rcenv.js")], {
+    const r = spawnSync("bun", ["build", "src/cli.ts", "--target=node", "--minify", "--outfile", join(release, "envhound.js")], {
       cwd: root,
       encoding: "utf8",
     });
     expect(r.status).toBe(0);
-    const sum = createHash("sha256").update(readFileSync(join(release, "rcenv.js"))).digest("hex");
-    writeFileSync(join(release, "SHA256SUMS"), `${sum}  rcenv.js\n`);
+    const sum = createHash("sha256").update(readFileSync(join(release, "envhound.js"))).digest("hex");
+    writeFileSync(join(release, "SHA256SUMS"), `${sum}  envhound.js\n`);
     copyFileSync(join(root, "install.sh"), join(release, "install.sh"));
   });
 
   test("installs with completion, then upgrades in place", () => {
-    const home = mkdtempSync(join(tmpdir(), "rcenv-bin-"));
+    const home = mkdtempSync(join(tmpdir(), "envhound-bin-"));
     const dir = join(home, "bin");
-    const r = run("sh", [join(root, "install.sh")], { RCENV_BASE_URL: base, RCENV_INSTALL_DIR: dir, ...homeEnv(home) });
+    const r = run("sh", [join(root, "install.sh")], { ENVHOUND_BASE_URL: base, ENVHOUND_INSTALL_DIR: dir, ...homeEnv(home) });
     expect(r.stderr).toBe("");
-    expect(r.stdout).toContain(`installed rcenv ${pkg.version} in ${dir} (runs on node)`);
-    expect(r.stdout).toContain(`${dir}/rcenv path add ${dir}`);
-    expect(readFileSync(join(dir, "rcenv"), "utf8").startsWith("#!/usr/bin/env node\n")).toBe(true);
-    expect(run(join(dir, "rcenv"), ["--version"]).stdout.trim()).toBe(pkg.version);
-    const completion = join(home, ".local", "share", "bash-completion", "completions", "rcenv");
-    expect(readFileSync(completion, "utf8")).toContain("rcenv __complete");
+    expect(r.stdout).toContain(`installed envhound ${pkg.version} in ${dir} (runs on node)`);
+    expect(r.stdout).toContain(`${dir}/envhound path add ${dir}`);
+    expect(readFileSync(join(dir, "envhound"), "utf8").startsWith("#!/usr/bin/env node\n")).toBe(true);
+    expect(run(join(dir, "envhound"), ["--version"]).stdout.trim()).toBe(pkg.version);
+    const completion = join(home, ".local", "share", "bash-completion", "completions", "envhound");
+    expect(readFileSync(completion, "utf8")).toContain("envhound __complete");
     expect(r.stdout).toContain("bash completion:");
-    expect(existsSync(join(home, ".config", "fish", "completions", "rcenv.fish"))).toBe(hasFish);
+    expect(existsSync(join(home, ".config", "fish", "completions", "envhound.fish"))).toBe(hasFish);
 
     // upgrade re-runs install.sh into the same directory
-    writeFileSync(join(dir, "rcenv"), readFileSync(join(dir, "rcenv"), "utf8").replace(/\n/, "\n// old\n"));
-    const u = run(join(dir, "rcenv"), ["upgrade"], { RCENV_BASE_URL: base, ...homeEnv(home) });
+    writeFileSync(join(dir, "envhound"), readFileSync(join(dir, "envhound"), "utf8").replace(/\n/, "\n// old\n"));
+    const u = run(join(dir, "envhound"), ["upgrade"], { ENVHOUND_BASE_URL: base, ...homeEnv(home) });
     expect(u.status).toBe(0);
-    expect(u.stdout).toContain(`installed rcenv ${pkg.version} in ${dir}`);
-    expect(readFileSync(join(dir, "rcenv"), "utf8")).not.toContain("// old");
+    expect(u.stdout).toContain(`installed envhound ${pkg.version} in ${dir}`);
+    expect(readFileSync(join(dir, "envhound"), "utf8")).not.toContain("// old");
   });
 
   test("refuses a download that doesn't match SHA256SUMS", () => {
-    const bad = mkdtempSync(join(tmpdir(), "rcenv-bad-"));
-    writeFileSync(join(bad, "rcenv.js"), "#!/usr/bin/env node\nconsole.log('evil')\n");
+    const bad = mkdtempSync(join(tmpdir(), "envhound-bad-"));
+    writeFileSync(join(bad, "envhound.js"), "#!/usr/bin/env node\nconsole.log('evil')\n");
     copyFileSync(join(release, "SHA256SUMS"), join(bad, "SHA256SUMS"));
     const dir = join(bad, "bin");
-    const r = run("sh", [join(root, "install.sh")], { RCENV_BASE_URL: `file://${bad}`, RCENV_INSTALL_DIR: dir, ...homeEnv(bad) });
+    const r = run("sh", [join(root, "install.sh")], { ENVHOUND_BASE_URL: `file://${bad}`, ENVHOUND_INSTALL_DIR: dir, ...homeEnv(bad) });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("checksum mismatch");
-    expect(existsSync(join(dir, "rcenv"))).toBe(false);
+    expect(existsSync(join(dir, "envhound"))).toBe(false);
   });
 
   // only Bun on PATH: the installed file must run on bun
@@ -141,15 +141,15 @@ describe("install.sh and rcenv upgrade", () => {
   const noNode = (path: string) => spawnSync("sh", ["-c", "command -v node"], { env: { PATH: path } }).status !== 0;
   const bunPath = `${dirname(bun)}:/usr/bin:/bin`;
   test.skipIf(!bun || !noNode(bunPath))("falls back to bun without node", () => {
-    const dir = join(mkdtempSync(join(tmpdir(), "rcenv-bun-")), "bin");
+    const dir = join(mkdtempSync(join(tmpdir(), "envhound-bun-")), "bin");
     const r = run("sh", [join(root, "install.sh")], {
       PATH: bunPath,
-      RCENV_BASE_URL: base,
-      RCENV_INSTALL_DIR: dir,
+      ENVHOUND_BASE_URL: base,
+      ENVHOUND_INSTALL_DIR: dir,
       ...homeEnv(dirname(dir)),
     });
     expect(r.stdout).toContain("(runs on bun)");
-    expect(readFileSync(join(dir, "rcenv"), "utf8").startsWith("#!/usr/bin/env bun\n")).toBe(true);
+    expect(readFileSync(join(dir, "envhound"), "utf8").startsWith("#!/usr/bin/env bun\n")).toBe(true);
   });
 
   test("other installs are told their own command", () => {

@@ -69,70 +69,70 @@ describe(".env edits", () => {
 test("lineDiff: removals before additions", () =>
   expect(lineDiff(["a", "b", "c"], ["a", "x", "c"]).map((d) => d.op + d.text)).toEqual([" a", "-b", "+x", " c"]));
 
-describe("rcenv set / unset / path end to end", () => {
+describe("envhound set / unset / path end to end", () => {
   const root = join(import.meta.dir, "..");
   const fixture = join(import.meta.dir, "fixtures", "home");
   const freshHome = () => {
-    const home = mkdtempSync(join(tmpdir(), "rcenv-home-"));
+    const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
     for (const f of [".bash_profile", ".bashrc"]) copyFileSync(join(fixture, f), join(home, f));
     return home;
   };
   const env = { ...process.env, XDG_CONFIG_HOME: "/nonexistent", XDG_STATE_HOME: "/nonexistent" };
-  const rcenv = (home: string, ...args: string[]) =>
+  const envhound = (home: string, ...args: string[]) =>
     spawnSync("bun", ["src/cli.ts", "--home", home, ...args], { cwd: root, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
 
   test("set writes the managed file and the hook once, and a fresh shell sees it", () => {
     const home = freshHome();
-    const r = rcenv(home, "set", "EDITOR=code", "MSG=it's here", "--yes");
+    const r = envhound(home, "set", "EDITOR=code", "MSG=it's here", "--yes");
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("✓ a fresh login shell now gets EDITOR");
     expect(r.stdout).toContain("EDITOR is also set at ~/.bash_profile:1");
-    const managed = join(home, ".config", "rcenv", "env.sh");
+    const managed = join(home, ".config", "envhound", "env.sh");
     expect(statSync(managed).mode & 0o777).toBe(0o600);
-    expect(rcenv(home, "set", "EDITOR=vim", "--yes").status).toBe(0);
-    expect(readFileSync(join(home, ".bash_profile"), "utf8").match(/rcenv\/env\.sh/g)).toHaveLength(2); // one hook line
+    expect(envhound(home, "set", "EDITOR=vim", "--yes").status).toBe(0);
+    expect(readFileSync(join(home, ".bash_profile"), "utf8").match(/envhound\/env\.sh/g)).toHaveLength(2); // one hook line
     expect(readFileSync(managed, "utf8")).toEndWith("export EDITOR=vim\nexport MSG='it'\\''s here'\n");
-    expect(spawnSync("ls", [join(home, ".local", "state", "rcenv", "backups")], { encoding: "utf8" }).stdout).toContain("env.sh");
+    expect(spawnSync("ls", [join(home, ".local", "state", "envhound", "backups")], { encoding: "utf8" }).stdout).toContain("env.sh");
   });
 
   test("a later assignment is reported, with exit 1", () => {
     const home = freshHome();
-    // something after the hook overrides rcenv
-    rcenv(home, "set", "LATE=rcenv", "--yes");
+    // something after the hook overrides envhound
+    envhound(home, "set", "LATE=envhound", "--yes");
     writeFileSync(join(home, ".bash_profile"), readFileSync(join(home, ".bash_profile"), "utf8") + "export LATE=other\n");
-    const r = rcenv(home, "set", "LATE=again", "--yes");
+    const r = envhound(home, "set", "LATE=again", "--yes");
     expect(r.status).toBe(1);
-    expect(r.stdout).toMatch(/does not get LATE: ~\/\.bash_profile:\d+ sets it again after rcenv/);
+    expect(r.stdout).toMatch(/does not get LATE: ~\/\.bash_profile:\d+ sets it again after envhound/);
   });
 
   test("path add / remove", () => {
     const home = freshHome();
     const dir = join(home, "tools");
     mkdirSync(dir);
-    expect(rcenv(home, "path", "add", dir, "--yes").stdout).toContain("is now in PATH");
-    expect(rcenv(home, "path", "add", dir, "--yes").stdout).toContain("Nothing to change.");
-    expect(rcenv(home, "path", "remove", dir, "--yes").stdout).toContain("is no longer in PATH");
+    expect(envhound(home, "path", "add", dir, "--yes").stdout).toContain("is now in PATH");
+    expect(envhound(home, "path", "add", dir, "--yes").stdout).toContain("Nothing to change.");
+    expect(envhound(home, "path", "remove", dir, "--yes").stdout).toContain("is no longer in PATH");
   });
 
   test("refuses to write without a terminal unless --yes; --dry-run writes nothing", () => {
     const home = freshHome();
-    expect(rcenv(home, "set", "A=1").status).toBe(1);
-    expect(rcenv(home, "set", "A=1", "--dry-run").stdout).toContain("+ export A=1");
-    expect(spawnSync("test", ["-e", join(home, ".config", "rcenv", "env.sh")]).status).toBe(1);
+    expect(envhound(home, "set", "A=1").status).toBe(1);
+    expect(envhound(home, "set", "A=1", "--dry-run").stdout).toContain("+ export A=1");
+    expect(spawnSync("test", ["-e", join(home, ".config", "envhound", "env.sh")]).status).toBe(1);
   });
 
   test("bad input", () => {
     const home = freshHome();
-    expect(rcenv(home, "set", "PATH=/x").stderr).toContain("rcenv path add");
-    expect(rcenv(home, "set", "1BAD=x").status).toBe(2);
-    expect(rcenv(home, "set", "NOEQUALS").status).toBe(2);
+    expect(envhound(home, "set", "PATH=/x").stderr).toContain("envhound path add");
+    expect(envhound(home, "set", "1BAD=x").status).toBe(2);
+    expect(envhound(home, "set", "NOEQUALS").status).toBe(2);
   });
 
   test("--file edits a .env file and masks secrets in the diff", () => {
     const home = freshHome();
     const file = join(home, ".env");
     writeFileSync(file, "# app\nAPI_TOKEN=old\n");
-    const r = rcenv(home, "set", "--file", file, "API_TOKEN=new", "PORT=3000", "--yes");
+    const r = envhound(home, "set", "--file", file, "API_TOKEN=new", "PORT=3000", "--yes");
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("+ API_TOKEN=********");
     expect(r.stdout).not.toContain("new");

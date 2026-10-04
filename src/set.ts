@@ -1,4 +1,4 @@
-// rcenv set / unset / path add / path remove: plan the file changes, then check
+// envhound set / unset / path add / path remove: plan the file changes, then check
 // them against a fresh trace once written.
 import { join } from "node:path";
 import { chain, pathEntries } from "./analyze.ts";
@@ -34,14 +34,14 @@ export interface Plan {
   notes: string[];
 }
 
-const fromRcenv = (a: Assignment, loc: Locations) => a.at.file === loc.managed;
+const fromEnvhound = (a: Assignment, loc: Locations) => a.at.file === loc.managed;
 
 export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
   const before = readIfExists(loc.managed);
   let lines = parseManaged(before ?? HEADER, loc.home);
   const notes: string[] = [];
   const bashrc = join(loc.home, ".bashrc");
-  const others = (name: string) => chain(trace, name).filter((a) => !fromRcenv(a, loc));
+  const others = (name: string) => chain(trace, name).filter((a) => !fromEnvhound(a, loc));
   const at = (as: Assignment[]) => [...new Set(as.map((a) => where(a, loc.home)))].join(", ");
 
   for (const op of ops) {
@@ -49,25 +49,25 @@ export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
       case "set": {
         lines = setVar(lines, op.name, op.value);
         const elsewhere = others(op.name);
-        if (elsewhere.length) notes.push(`${op.name} is also set at ${at(elsewhere)}; rcenv's line runs last, so it wins in login shells`);
+        if (elsewhere.length) notes.push(`${op.name} is also set at ${at(elsewhere)}; envhound's line runs last, so it wins in login shells`);
         if (elsewhere.some((a) => a.at.file === bashrc))
           notes.push(`~/.bashrc runs again in every non-login shell and will set ${op.name} back there; consider removing that line`);
         break;
       }
       case "unset": {
-        if (!lines.some((l) => l.kind === "var" && l.name === op.name)) notes.push(`${op.name} is not set by rcenv`);
+        if (!lines.some((l) => l.kind === "var" && l.name === op.name)) notes.push(`${op.name} is not set by envhound`);
         lines = unsetVar(lines, op.name);
         const elsewhere = others(op.name);
-        if (elsewhere.length) notes.push(`${op.name} is still set at ${at(elsewhere)}; rcenv only edits its own file, remove that line yourself`);
+        if (elsewhere.length) notes.push(`${op.name} is still set at ${at(elsewhere)}; envhound only edits its own file, remove that line yourself`);
         break;
       }
       case "path-add":
         lines = addPath(lines, op.dir, op.position, loc.home);
         break;
       case "path-remove": {
-        if (!lines.some((l) => l.kind === "path" && l.dir === op.dir)) notes.push(`${op.dir} is not added by rcenv`);
+        if (!lines.some((l) => l.kind === "path" && l.dir === op.dir)) notes.push(`${op.dir} is not added by envhound`);
         lines = removePath(lines, op.dir);
-        const entry = pathEntries(trace, trace.final.PATH ?? "").find((e) => e.dir === op.dir && e.addedBy && !fromRcenv(e.addedBy, loc));
+        const entry = pathEntries(trace, trace.final.PATH ?? "").find((e) => e.dir === op.dir && e.addedBy && !fromEnvhound(e.addedBy, loc));
         if (entry) notes.push(`${op.dir} is also added at ${where(entry.addedBy!, loc.home)}; remove that line yourself`);
         break;
       }
@@ -118,7 +118,7 @@ export interface Check {
 export function verify(ops: EditOp[], trace: Trace, loc: Locations): Check[] {
   const later = (name: string) => {
     const c = chain(trace, name);
-    const ours = c.findLastIndex((a) => fromRcenv(a, loc));
+    const ours = c.findLastIndex((a) => fromEnvhound(a, loc));
     return c.slice(ours + 1).map((a) => where(a, loc.home));
   };
   const path = (trace.final.PATH ?? "").split(":");
@@ -127,24 +127,24 @@ export function verify(ops: EditOp[], trace: Trace, loc: Locations): Check[] {
       case "set": {
         if (trace.final[op.name] === op.value) return { ok: true, message: `a fresh login shell now gets ${op.name}` };
         const l = later(op.name);
-        return { ok: false, message: `a fresh login shell does not get ${op.name}${l.length ? `: ${l.join(", ")} sets it again after rcenv` : ""}` };
+        return { ok: false, message: `a fresh login shell does not get ${op.name}${l.length ? `: ${l.join(", ")} sets it again after envhound` : ""}` };
       }
       case "unset":
         if (trace.final[op.name] === undefined) return { ok: true, message: `${op.name} is no longer set in a fresh login shell` };
-        return { ok: false, message: `${op.name} is still set in a fresh login shell (rcenv blame ${op.name} shows where)` };
+        return { ok: false, message: `${op.name} is still set in a fresh login shell (envhound blame ${op.name} shows where)` };
       case "path-add":
         return path.includes(op.dir)
           ? { ok: true, message: `${op.dir} is now in PATH for fresh login shells` }
-          : { ok: false, message: `${op.dir} is not in PATH of a fresh login shell (rcenv blame PATH shows why)` };
+          : { ok: false, message: `${op.dir} is not in PATH of a fresh login shell (envhound blame PATH shows why)` };
       case "path-remove":
         return path.includes(op.dir)
-          ? { ok: false, message: `${op.dir} is still in PATH (rcenv path shows who adds it)` }
+          ? { ok: false, message: `${op.dir} is still in PATH (envhound path shows who adds it)` }
           : { ok: true, message: `${op.dir} is no longer in PATH for fresh login shells` };
     }
   });
 }
 
-/** Commands that make the same change in the current shell, which rcenv cannot reach. */
+/** Commands that make the same change in the current shell, which envhound cannot reach. */
 export function currentShellCommands(ops: EditOp[]): string[] {
   return ops.flatMap((op) => {
     switch (op.kind) {

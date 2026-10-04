@@ -35,7 +35,7 @@ export function traceBash(opts: TraceOptions = {}): Trace {
     TERM: process.env.TERM ?? "xterm",
     PATH: BASE_PATH,
   };
-  const dir = mkdtempSync(join(tmpdir(), "rcenv-"));
+  const dir = mkdtempSync(join(tmpdir(), "envhound-"));
   const envFile = join(dir, "env");
   try {
     // Startup files may print to stdout, so the final env goes to a file instead.

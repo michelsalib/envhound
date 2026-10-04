@@ -29,37 +29,38 @@ import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import { fetchLatest, installKind, installerUrl, upgradeCommand, updateNotice } from "./update.ts";
 
-const HELP = `rcenv ${pkg.version}: find which startup file sets each environment variable, and change it
+const HELP = `envhound ${pkg.version}: find which startup file sets each environment variable, and change it
 
 Usage:
-  rcenv [list]        every exported variable, with the startup file:line that sets it
-  rcenv blame VAR     every startup file:line that assigns VAR, in order
-                      (for PATH: what each step added or removed)
-  rcenv path          current PATH, one entry per line, with who added it,
-                      flagging missing directories and duplicates
-  rcenv dotenv [FILE...]
-                      check .env files (default ./.env): keys that are new,
-                      already set, or conflicting with your shell, and syntax
-                      problems; exits 1 if there are problems
+  envhound [list]        every exported variable, with the startup file:line that sets it
+  envhound blame VAR     every startup file:line that assigns VAR, in order
+                         (for PATH: what each step added or removed)
+  envhound path          current PATH, one entry per line, with who added it,
+                         flagging missing directories and duplicates
+  envhound dotenv [FILE...]
+                         check .env files (default ./.env): keys that are new,
+                         already set, or conflicting with your shell, and syntax
+                         problems; exits 1 if there are problems
 
-  rcenv set NAME=value...       set variables for future login shells
-  rcenv unset NAME...           remove variables rcenv set
-  rcenv path add DIR [--append] put DIR in PATH (at the front unless --append)
-  rcenv path remove DIR         remove a directory rcenv added
-                      These write ~/.config/rcenv/env.sh, loaded by one line
-                      rcenv adds to your login file. With --file FILE, set and
-                      unset edit a .env file instead. Every change is shown as
-                      a diff and confirmed first; changed files are backed up.
+  envhound set NAME=value...       set variables for future login shells
+  envhound unset NAME...           remove variables envhound set
+  envhound path add DIR [--append] put DIR in PATH (at the front unless --append)
+  envhound path remove DIR         remove a directory envhound added
+                         These write ~/.config/envhound/env.sh, loaded by one line
+                         envhound adds to your login file. With --file FILE, set and
+                         unset edit a .env file instead. Every change is shown as
+                         a diff and confirmed first; changed files are backed up.
 
-  rcenv edit [FILE...] interactive editor for variables, PATH and .env files
-                      (./.env is included when it exists): stage changes,
-                      then review them as a diff and write
+  envhound edit [FILE...]
+                         interactive editor for variables, PATH and .env files
+                         (./.env is included when it exists): stage changes,
+                         then review them as a diff and write
 
-  rcenv completion SHELL
-                      print a completion script for bash, zsh or fish, e.g.
-                      eval "$(rcenv completion bash)" in ~/.bashrc
-  rcenv upgrade       update rcenv (installed with install.sh; otherwise shows
-                      the command for npm, bun, npx or bunx)
+  envhound completion SHELL
+                         print a completion script for bash, zsh or fish, e.g.
+                         eval "$(envhound completion bash)" in ~/.bashrc
+  envhound upgrade       update envhound (installed with install.sh; otherwise
+                         shows the command for npm, bun, npx or bunx)
 
 Options:
   --json              machine-readable output (list, blame, path, dotenv)
@@ -72,11 +73,11 @@ Options:
   -h, --help          show this help
   -v, --version       show the version
 
-rcenv replays a bash login shell from a clean environment with tracing on,
+envhound replays a bash login shell from a clean environment with tracing on,
 so it only sees what startup files do. That runs your startup files once.
 
-Once a week rcenv asks npm in the background whether a newer version exists,
-and says so after a command. RCENV_NO_UPDATE_CHECK=1 turns this off.
+Once a week envhound asks npm in the background whether a newer version exists,
+and says so after a command. ENVHOUND_NO_UPDATE_CHECK=1 turns this off.
 `;
 
 type Values = {
@@ -138,7 +139,7 @@ async function main(argv: string[]): Promise<number> {
     values.home === undefined &&
     !values.json &&
     !env.CI &&
-    !env.RCENV_NO_UPDATE_CHECK &&
+    !env.ENVHOUND_NO_UPDATE_CHECK &&
     !env.NO_UPDATE_NOTIFIER &&
     !["completion", "upgrade"].includes(command)
   )
@@ -161,7 +162,7 @@ async function main(argv: string[]): Promise<number> {
     }
     case "blame": {
       const name = args[0];
-      if (!name) return usage("blame needs a variable name, e.g. rcenv blame PATH");
+      if (!name) return usage("blame needs a variable name, e.g. envhound blame PATH");
       const report = blame(traceBash({ home: values.home }), name, process.env);
       print(() => renderBlame(report, opts), () => blameJson(report, opts));
       return 0;
@@ -193,7 +194,7 @@ async function main(argv: string[]): Promise<number> {
         const name = command === "set" ? arg.slice(0, eq) : arg;
         if (command === "set" && eq < 0) return usage(`expected NAME=value, got '${arg}'`);
         if (!valid.test(name)) return usage(`'${name}' is not a valid variable name`);
-        if (name === "PATH" && !values.file) return usage("use 'rcenv path add DIR' to change PATH");
+        if (name === "PATH" && !values.file) return usage("use 'envhound path add DIR' to change PATH");
         const file = values.file && resolve(values.file);
         ops.push(command === "set" ? { kind: "set", name, value: arg.slice(eq + 1), file } : { kind: "unset", name, file });
       }
@@ -249,7 +250,7 @@ async function main(argv: string[]): Promise<number> {
 async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise<number> {
   const c = paint(opts);
   const loc = locations(opts.home, process.env, values.home !== undefined);
-  // shell changes go to rcenv's file; the others to their .env file
+  // shell changes go to envhound's file; the others to their .env file
   const shellOps = ops.filter((op) => !("file" in op && op.file));
   const files = [...new Set(ops.flatMap((op) => ("file" in op && op.file ? [op.file] : [])))];
   const plans = [
@@ -268,7 +269,7 @@ async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise
   if (values["dry-run"]) return 0;
   if (!values.yes) {
     if (!process.stdin.isTTY) {
-      console.error("rcenv: not a terminal, so rcenv can't ask; pass --yes to write without asking");
+      console.error("envhound: not a terminal, so envhound can't ask; pass --yes to write without asking");
       return 1;
     }
     if (!(await confirm("Write these changes? [y/N] "))) {
@@ -294,7 +295,7 @@ async function upgrade(): Promise<number> {
   const script = realpathSync(process.argv[1]!);
   const kind = installKind(script);
   if (kind !== "standalone") {
-    console.log(`This rcenv was not installed with install.sh. Update it with:\n  ${upgradeCommand(kind)}`);
+    console.log(`This envhound was not installed with install.sh. Update it with:\n  ${upgradeCommand(kind)}`);
     return 0;
   }
   const url = installerUrl(process.env);
@@ -307,19 +308,19 @@ async function upgrade(): Promise<number> {
       installer = await res.text();
     }
   } catch (e) {
-    console.error(`rcenv: could not download ${url}: ${e instanceof Error ? e.message : e}`);
+    console.error(`envhound: could not download ${url}: ${e instanceof Error ? e.message : e}`);
     return 1;
   }
   const r = spawnSync("sh", ["-s"], {
     input: installer,
     stdio: ["pipe", "inherit", "inherit"],
-    env: { ...process.env, RCENV_INSTALL_DIR: dirname(script) },
+    env: { ...process.env, ENVHOUND_INSTALL_DIR: dirname(script) },
   });
   return r.status ?? 1;
 }
 
 function usage(message: string): number {
-  console.error(`rcenv: ${message}\nRun 'rcenv --help' for usage.`);
+  console.error(`envhound: ${message}\nRun 'envhound --help' for usage.`);
   return 2;
 }
 
@@ -329,7 +330,7 @@ main(process.argv.slice(2)).then(
     if (notice) process.stderr.write(`\n${notice}\n`);
   },
   (e) => {
-    console.error(`rcenv: ${e instanceof Error ? e.message : e}`);
+    console.error(`envhound: ${e instanceof Error ? e.message : e}`);
     process.exitCode = 1;
   },
 );

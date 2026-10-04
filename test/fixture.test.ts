@@ -44,13 +44,13 @@ describe("fixture home", () => {
     const steps = blame(t, "PATH", {}).pathSteps!;
     const byDir = (d: string) => steps.find((s) => s.added.includes(d))?.assignment;
     expect(byDir(`${home}/bin`)?.at.line).toBe(2);
-    const viaFn = byDir("/opt/rcenv-test/bin")!;
+    const viaFn = byDir("/opt/envhound-test/bin")!;
     expect(viaFn.via).toMatchObject({ kind: "function", name: "add_path", at: { line: 2 } });
     expect(steps.at(-1)?.added).toEqual([]); // PATH+=":$HOME/bin" repeats ~/bin
   });
 
   test("path entries: who added each, duplicates, missing", () => {
-    const entries = pathEntries(t, `${home}/bin:/usr/bin:/opt/rcenv-test/bin:/usr/bin:/from/terminal`);
+    const entries = pathEntries(t, `${home}/bin:/usr/bin:/opt/envhound-test/bin:/usr/bin:/from/terminal`);
     expect(entries.map((e) => e.source)).toEqual(["startup", "initial", "startup", "initial", "inherited"]);
     expect(entries[3]?.duplicateOf).toBe(2);
     expect(entries[2]?.exists).toBe(false);

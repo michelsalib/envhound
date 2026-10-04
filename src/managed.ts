@@ -1,5 +1,5 @@
-// The shell file rcenv owns (~/.config/rcenv/env.sh) and the hook that loads it.
-// Lines rcenv does not recognise are kept verbatim, so hand edits survive.
+// The shell file envhound owns (~/.config/envhound/env.sh) and the hook that loads it.
+// Lines envhound does not recognise are kept verbatim, so hand edits survive.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { shellQuote } from "./quote.ts";
@@ -7,7 +7,7 @@ import { words } from "./shellwords.ts";
 
 export interface Locations {
   home: string;
-  /** ~/.config/rcenv/env.sh (or under $XDG_CONFIG_HOME) */
+  /** ~/.config/envhound/env.sh (or under $XDG_CONFIG_HOME) */
   managed: string;
   /** where backups of changed files go */
   backups: string;
@@ -19,22 +19,22 @@ export interface Locations {
 export function locations(home: string, env: Record<string, string | undefined>, explicitHome: boolean): Locations {
   const config = (!explicitHome && env.XDG_CONFIG_HOME) || join(home, ".config");
   const state = (!explicitHome && env.XDG_STATE_HOME) || join(home, ".local", "state");
-  return { home, managed: join(config, "rcenv", "env.sh"), backups: join(state, "rcenv", "backups"), updateState: join(state, "rcenv", "update.json") };
+  return { home, managed: join(config, "envhound", "env.sh"), backups: join(state, "envhound", "backups"), updateState: join(state, "envhound", "update.json") };
 }
 
-export const HEADER = `# Managed by rcenv: environment variables for your login shell.
-# Change them with \`rcenv set NAME=value\`, \`rcenv unset NAME\` and \`rcenv path add DIR\`.
-# Hand edits are fine: rcenv keeps lines it does not recognise.
+export const HEADER = `# Managed by envhound: environment variables for your login shell.
+# Change them with \`envhound set NAME=value\`, \`envhound unset NAME\` and \`envhound path add DIR\`.
+# Hand edits are fine: envhound keeps lines it does not recognise.
 `;
 
 // The hook resolves the file the same way locations() does.
-const HOOK_PATH = '"${XDG_CONFIG_HOME:-$HOME/.config}/rcenv/env.sh"';
+const HOOK_PATH = '"${XDG_CONFIG_HOME:-$HOME/.config}/envhound/env.sh"';
 export const HOOK = `
-# Added by rcenv: load variables managed with \`rcenv set\`
+# Added by envhound: load variables managed with \`envhound set\`
 [ -f ${HOOK_PATH} ] && . ${HOOK_PATH}
 `;
 
-export const hasHook = (text: string) => text.includes("rcenv/env.sh");
+export const hasHook = (text: string) => text.includes("envhound/env.sh");
 
 /** The file bash reads for login shells: the first that exists, as bash does. */
 export function loginFile(home: string): string {

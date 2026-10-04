@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "rcenv",
+      "name": "envhound",
       "devDependencies": {
         "@types/bun": "^1.4.2",
         "@types/node": "^26.6.4",
