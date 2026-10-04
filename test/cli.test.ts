@@ -35,8 +35,8 @@ test("banner puts the text beside the logo, or under it on a narrow terminal", (
   expect(wide).toContain("$_");
   expect(wide).not.toContain("\x1b[");
   expect(banner(["envhound 1.2.3"], { color: false, truecolor: false, columns: 40 })).toEndWith("\n\n  envhound 1.2.3\n");
-  expect(banner([], { color: true, truecolor: false })).toContain("\x1b[38;5;172m");
-  expect(banner([], { color: true, truecolor: true })).toContain("\x1b[38;2;233;128;28m");
+  expect(banner([], { color: true, truecolor: false })).toContain("\x1b[38;5;130m");
+  expect(banner([], { color: true, truecolor: true })).toContain("\x1b[38;2;168;82;26m");
 });
 
 test.skipIf(!hasNode)("unknown command exits with usage error", () => {

@@ -3,27 +3,27 @@
   <defs>
     <!-- right half of the face; the left half is its mirror image. Eyes in terminal green. -->
     <g id="half">
-      <polygon points="150,66 196,18 204,98 176,92" fill="#e9801c" stroke="#e9801c" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="158,68 192,32 190,86 174,86" fill="#2b1d14" stroke="#2b1d14" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="168,78 188,46 186,84" fill="#e7d3bb" stroke="#e7d3bb" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="128,66 150,66 176,92 150,112 128,100" fill="#f8a53a" stroke="#f8a53a" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="176,92 204,98 220,124 186,112 150,112" fill="#ee8d22" stroke="#ee8d22" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="128,100 150,112 142,150 128,160" fill="#f6a034" stroke="#f6a034" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="150,112 186,112 220,124 190,140 156,150 142,150" fill="#e47a16" stroke="#e47a16" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="220,124 244,152 204,160 190,140" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="190,140 204,160 164,198 146,196 150,160 156,150" fill="#eedcc6" stroke="#eedcc6" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="128,160 142,150 156,150 150,160 146,196 128,200" fill="#d96b12" stroke="#d96b12" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="128,200 146,196 164,198 128,230" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
-      <path d="M148 126 L190 108 Q184 128 166 133 Z" fill="#2b1d14"/>
-      <circle cx="171" cy="122" r="3.4" fill="#7fd18b"/>
+      <polygon points="150,54 186,58 212,92 228,150 224,204 204,222 184,190 174,140 166,96" fill="#a8521a" stroke="#a8521a" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="166,96 174,140 184,190 204,222 180,214 164,166 158,120" fill="#8c4214" stroke="#8c4214" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="150,54 186,58 210,90 176,80" fill="#c0631f" stroke="#c0631f" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="128,40 150,44 176,80 166,96 158,120 128,108" fill="#e08a3a" stroke="#e08a3a" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="128,108 158,120 160,132 140,128 128,126" fill="#d07a2c" stroke="#d07a2c" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="158,120 164,166 160,176 148,150 140,128 160,132" fill="#c76f26" stroke="#c76f26" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="128,126 140,128 148,150 146,186 128,190" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="148,150 160,176 158,196 146,186" fill="#eedcc6" stroke="#eedcc6" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="146,186 158,196 164,166 176,206 160,222 140,214 128,214 128,190" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M136 112 Q150 100 166 110 Q158 126 140 120 Z" fill="#2b1d14"/>
+      <circle cx="151" cy="113" r="4.6" fill="#7fd18b"/>
     </g>
   </defs>
   <rect width="256" height="256" rx="52" fill="#1b1f2a"/>
-  <g transform="translate(12.8 16.4) scale(.9)">
+  <g transform="translate(-6.4 -10) scale(1.05)">
     <use href="#half" xlink:href="#half"/>
     <use href="#half" xlink:href="#half" transform="matrix(-1 0 0 1 256 0)"/>
+    <polygon points="128,64 134,70 140,128 128,190 116,128 122,70" fill="#fbf1e3"/>
     <!-- nose -->
-    <path d="M112 194 Q128 188 144 194 L128 212 Z" fill="#2b1d14"/>
+    <path d="M108 186 Q128 176 148 186 Q146 200 128 206 Q110 200 108 186 Z" fill="#2b1d14"/>
+    <path d="M118 188 Q122 186 124 190 M132 190 Q134 186 138 188" stroke="#55443a" stroke-width="2" fill="none" stroke-linecap="round"/>
   </g>
   <!-- the prompt, with a blinking cursor; outlined in the background colour where it overlaps the head -->
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="54" font-weight="800" fill="#7fd18b" stroke="#1b1f2a" stroke-width="9" stroke-linejoin="round" paint-order="stroke">
