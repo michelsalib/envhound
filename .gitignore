@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# tests run real login shells with this HOME; system scripts drop files in it
+test/fixtures/home/*
+!test/fixtures/home/.bash_profile
+!test/fixtures/home/.bashrc
