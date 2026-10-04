@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
 import { blame, envRows, pathEntries } from "./analyze.ts";
@@ -25,6 +27,7 @@ import { currentShellCommands, planDotenv, planShell, verify, type EditOp } from
 import { traceBash } from "./trace/bash.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
+import { fetchLatest, installKind, installerUrl, upgradeCommand, updateNotice } from "./update.ts";
 
 const HELP = `rcenv ${pkg.version}: find which startup file sets each environment variable, and change it
 
@@ -55,6 +58,8 @@ Usage:
   rcenv completion SHELL
                       print a completion script for bash, zsh or fish, e.g.
                       eval "$(rcenv completion bash)" in ~/.bashrc
+  rcenv upgrade       update rcenv (installed with install.sh; otherwise shows
+                      the command for npm, bun, npx or bunx)
 
 Options:
   --json              machine-readable output (list, blame, path, dotenv)
@@ -69,6 +74,9 @@ Options:
 
 rcenv replays a bash login shell from a clean environment with tracing on,
 so it only sees what startup files do. That runs your startup files once.
+
+Once a week rcenv asks npm in the background whether a newer version exists,
+and says so after a command. RCENV_NO_UPDATE_CHECK=1 turns this off.
 `;
 
 type Values = {
@@ -81,6 +89,9 @@ type Values = {
   append?: boolean;
 };
 
+/** Printed to stderr when the command ends; see update.ts. */
+let notice: string | undefined;
+
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DOTENV_NAME = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
@@ -88,6 +99,11 @@ async function main(argv: string[]): Promise<number> {
   // hidden, called by the completion scripts on every <Tab>; raw words, so no option parsing
   if (argv[0] === "__complete") {
     for (const c of complete(argv.slice(1), process.env)) console.log(c);
+    return 0;
+  }
+  // hidden, started in the background by updateNotice
+  if (argv[0] === "__update-check") {
+    await fetchLatest(argv[1]!);
     return 0;
   }
   const { values, positionals } = parseArgs({
@@ -115,6 +131,18 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const [command = "list", ...args] = positionals;
+  // only for a person at a terminal using their real home; never in scripts, CI or tests
+  const env = process.env;
+  if (
+    process.stderr.isTTY &&
+    values.home === undefined &&
+    !values.json &&
+    !env.CI &&
+    !env.RCENV_NO_UPDATE_CHECK &&
+    !env.NO_UPDATE_NOTIFIER &&
+    !["completion", "upgrade"].includes(command)
+  )
+    notice = updateNotice(pkg.version, process.argv[1]!, locations(resolve(env.HOME ?? ""), env, false).updateState);
   const tty = process.stdout.isTTY;
   const opts: RenderOptions = {
     home: resolve(values.home ?? process.env.HOME ?? ""),
@@ -210,6 +238,8 @@ async function main(argv: string[]): Promise<number> {
       process.stdout.write(completionScript(shell));
       return 0;
     }
+    case "upgrade":
+      return upgrade();
     default:
       return usage(`unknown command '${command}'`);
   }
@@ -259,13 +289,45 @@ async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise
   return checks.every((x) => x.ok) ? 0 : 1;
 }
 
+/** Re-runs install.sh into the same directory; other installs get their own command. */
+async function upgrade(): Promise<number> {
+  const script = realpathSync(process.argv[1]!);
+  const kind = installKind(script);
+  if (kind !== "standalone") {
+    console.log(`This rcenv was not installed with install.sh. Update it with:\n  ${upgradeCommand(kind)}`);
+    return 0;
+  }
+  const url = installerUrl(process.env);
+  let installer: string;
+  try {
+    if (url.startsWith("file:")) installer = readFileSync(fileURLToPath(url), "utf8");
+    else {
+      const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      installer = await res.text();
+    }
+  } catch (e) {
+    console.error(`rcenv: could not download ${url}: ${e instanceof Error ? e.message : e}`);
+    return 1;
+  }
+  const r = spawnSync("sh", ["-s"], {
+    input: installer,
+    stdio: ["pipe", "inherit", "inherit"],
+    env: { ...process.env, RCENV_INSTALL_DIR: dirname(script) },
+  });
+  return r.status ?? 1;
+}
+
 function usage(message: string): number {
   console.error(`rcenv: ${message}\nRun 'rcenv --help' for usage.`);
   return 2;
 }
 
 main(process.argv.slice(2)).then(
-  (code) => (process.exitCode = code),
+  (code) => {
+    process.exitCode = code;
+    if (notice) process.stderr.write(`\n${notice}\n`);
+  },
   (e) => {
     console.error(`rcenv: ${e instanceof Error ? e.message : e}`);
     process.exitCode = 1;

@@ -11,13 +11,15 @@ export interface Locations {
   managed: string;
   /** where backups of changed files go */
   backups: string;
+  /** the weekly update check's state */
+  updateState: string;
 }
 
 /** With an explicit home (--home, tests) XDG variables are ignored: they describe the real home. */
 export function locations(home: string, env: Record<string, string | undefined>, explicitHome: boolean): Locations {
   const config = (!explicitHome && env.XDG_CONFIG_HOME) || join(home, ".config");
   const state = (!explicitHome && env.XDG_STATE_HOME) || join(home, ".local", "state");
-  return { home, managed: join(config, "rcenv", "env.sh"), backups: join(state, "rcenv", "backups") };
+  return { home, managed: join(config, "rcenv", "env.sh"), backups: join(state, "rcenv", "backups"), updateState: join(state, "rcenv", "update.json") };
 }
 
 export const HEADER = `# Managed by rcenv: environment variables for your login shell.

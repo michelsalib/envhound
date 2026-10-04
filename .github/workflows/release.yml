@@ -1,0 +1,41 @@
+# Push a tag vX.Y.Z (`npm version patch && git push --follow-tags`) to publish:
+# npm (for npx/bunx/npm -g) first, then a GitHub release for install.sh.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # the GitHub release
+  id-token: write # npm provenance and trusted publishing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Tag matches package.json
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p 'require("./package.json").version')"
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - run: shellcheck install.sh
+      - run: bun run build
+      - name: Release files
+        run: |
+          mkdir release
+          cp dist/rcenv.js install.sh release/
+          (cd release && sha256sum rcenv.js install.sh > SHA256SUMS)
+      # trusted publishing (OIDC) once configured on npmjs.com; NPM_TOKEN until then
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}

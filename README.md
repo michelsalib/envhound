@@ -15,6 +15,26 @@ pathprepend() is defined in ~/.profile
 ✓ a fresh login shell ends with this value
 ```
 
+## Install
+
+rcenv is a single JavaScript file that runs on Node ≥ 20 or Bun.
+
+```sh
+npx rcenv blame PATH        # or: bunx rcenv blame PATH, nothing to install
+npm install -g rcenv        # or: bun add -g rcenv
+curl -fsSL https://github.com/michelsalib/rcenv/releases/latest/download/install.sh | sh
+```
+
+`install.sh` puts `rcenv` in `~/.local/bin` (`RCENV_INSTALL_DIR` to change it, `RCENV_VERSION=0.2.0` to pin
+a version), checks it against the release's `SHA256SUMS`, and runs it on Node, or on Bun when there is no
+Node ≥ 20. It also installs bash completion where bash-completion loads it, and fish completion when fish
+is installed; it never edits your startup files, so for zsh it prints the line to add.
+
+**Updates.** Once a week rcenv asks the npm registry, in the background, whether a newer version exists,
+and when there is one says so after a command, at most once a week, with the update command for how you
+installed it: `rcenv upgrade` for `install.sh`, `npm install -g rcenv@latest`, `npx rcenv@latest`, and so on.
+It stays quiet in scripts, CI, with `--json` or `--home`, and with `RCENV_NO_UPDATE_CHECK=1`.
+
 ## Commands
 
 | Command | What it shows |
@@ -26,6 +46,7 @@ pathprepend() is defined in ~/.profile
 | `rcenv set NAME=value…` | set variables for future login shells (see below) |
 | `rcenv unset NAME…` | remove variables `rcenv set` added |
 | `rcenv path add DIR [--append]` / `rcenv path remove DIR` | put a directory in `PATH` (front by default), or take it out |
+| `rcenv upgrade` | update an `install.sh` install; for others, prints the update command |
 | `rcenv edit [FILE…]` | interactive editor for variables, `PATH` and `.env` files (see below) |
 | `rcenv completion bash\|zsh\|fish` | a shell completion script (commands, flags, live variable names) |
 
@@ -98,6 +119,8 @@ to rcenv's file and `.env` keys to their file.
 
 ## Shell completion
 
+`install.sh` sets up bash and fish completion for you. Otherwise:
+
 ```sh
 eval "$(rcenv completion bash)"                                # in ~/.bashrc
 eval "$(rcenv completion zsh)"                                 # in ~/.zshrc, after compinit
@@ -120,7 +143,7 @@ Values labelled `(inherited)` come from whatever launched your shell (terminal, 
 
 ## Status
 
-bash only for now. Planned: zsh and fish, and packaging (npm, `.deb`).
+bash only for now. Planned: zsh and fish, and a `.deb`.
 
 ## Development
 
@@ -133,3 +156,14 @@ bun run build               # dist/rcenv.js, plain JS for node >= 20
 ```
 
 Source uses only `node:` APIs so the build runs on both Node and Bun.
+
+## Releasing
+
+```sh
+npm version patch           # or minor/major: bumps package.json, commits, tags vX.Y.Z
+git push --follow-tags
+```
+
+The tag starts [`.github/workflows/release.yml`](.github/workflows/release.yml): tests, then `npm publish`
+with provenance, then a GitHub release with `rcenv.js`, `install.sh` and `SHA256SUMS`. npm needs either
+an `NPM_TOKEN` repository secret or trusted publishing configured for this workflow on npmjs.com.
