@@ -1,6 +1,10 @@
-# envhound
+<p align="center">
+  <img src="assets/logo.svg" width="128" height="128" alt="envhound logo: a snarling fox head that has tracked down a shell prompt">
+</p>
 
-Find which startup file sets each environment variable, audit your `PATH`, and change them safely.
+<h1 align="center">envhound</h1>
+
+<p align="center">Find which startup file sets each environment variable, audit your <code>PATH</code>, and change them safely.</p>
 
 ```
 $ envhound blame PATH

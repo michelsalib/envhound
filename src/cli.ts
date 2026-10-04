@@ -22,6 +22,7 @@ import {
   type DotenvReport,
   type RenderOptions,
 } from "./format.ts";
+import { banner } from "./logo.ts";
 import { locations } from "./managed.ts";
 import { currentShellCommands, planDotenv, planShell, verify, type EditOp } from "./set.ts";
 import { traceBash } from "./trace/bash.ts";
@@ -29,9 +30,9 @@ import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import { fetchLatest, installKind, installerUrl, upgradeCommand, updateNotice } from "./update.ts";
 
-const HELP = `envhound ${pkg.version}: find which startup file sets each environment variable, and change it
+const TAGLINE = "find which startup file sets each environment variable, and change it";
 
-Usage:
+const HELP = `Usage:
   envhound [list]        every exported variable, with the startup file:line that sets it
   envhound blame VAR     every startup file:line that assigns VAR, in order
                          (for PATH: what each step added or removed)
@@ -122,12 +123,20 @@ async function main(argv: string[]): Promise<number> {
       version: { type: "boolean", short: "v" },
     },
   });
+  // the logo only for a person at a terminal; scripts get the plain text, e.g. $(envhound --version)
+  const art = process.stdout.isTTY;
+  const logo = () =>
+    banner([`envhound ${pkg.version}`, "", "find which startup file", "sets each environment", "variable, and change it"], {
+      color: !process.env.NO_COLOR,
+      truecolor: /^(truecolor|24bit)$/i.test(process.env.COLORTERM ?? ""),
+      columns: process.stdout.columns,
+    });
   if (values.help) {
-    process.stdout.write(HELP);
+    process.stdout.write(art ? `${logo()}\n${HELP}` : `envhound ${pkg.version}: ${TAGLINE}\n\n${HELP}`);
     return 0;
   }
   if (values.version) {
-    console.log(pkg.version);
+    process.stdout.write(art ? logo() : `${pkg.version}\n`);
     return 0;
   }
 

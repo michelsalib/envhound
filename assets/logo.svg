@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="envhound logo">
+  <title>envhound</title>
+  <defs>
+    <!-- right half of the face; the left half is its mirror image. Eyes in terminal green. -->
+    <g id="half">
+      <polygon points="150,66 196,18 204,98 176,92" fill="#e9801c" stroke="#e9801c" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="158,68 192,32 190,86 174,86" fill="#2b1d14" stroke="#2b1d14" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="168,78 188,46 186,84" fill="#e7d3bb" stroke="#e7d3bb" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="128,66 150,66 176,92 150,112 128,100" fill="#f8a53a" stroke="#f8a53a" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="176,92 204,98 220,124 186,112 150,112" fill="#ee8d22" stroke="#ee8d22" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="128,100 150,112 142,150 128,160" fill="#f6a034" stroke="#f6a034" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="150,112 186,112 220,124 190,140 156,150 142,150" fill="#e47a16" stroke="#e47a16" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="220,124 244,152 204,160 190,140" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="190,140 204,160 164,198 146,196 150,160 156,150" fill="#eedcc6" stroke="#eedcc6" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="128,160 142,150 156,150 150,160 146,196 128,200" fill="#d96b12" stroke="#d96b12" stroke-width="1" stroke-linejoin="round"/>
+      <polygon points="128,200 146,196 164,198 128,230" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M148 126 L190 108 Q184 128 166 133 Z" fill="#2b1d14"/>
+      <circle cx="171" cy="122" r="3.4" fill="#7fd18b"/>
+    </g>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="#1b1f2a"/>
+  <g transform="translate(12.8 16.4) scale(.9)">
+    <use href="#half" xlink:href="#half"/>
+    <use href="#half" xlink:href="#half" transform="matrix(-1 0 0 1 256 0)"/>
+    <!-- nose -->
+    <path d="M112 194 Q128 188 144 194 L128 212 Z" fill="#2b1d14"/>
+  </g>
+  <!-- the prompt, with a blinking cursor; outlined in the background colour where it overlaps the head -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="54" font-weight="800" fill="#7fd18b" stroke="#1b1f2a" stroke-width="9" stroke-linejoin="round" paint-order="stroke">
+    <text x="164" y="224">$</text>
+    <text x="196" y="224">_<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" repeatCount="indefinite"/></text>
+  </g>
+</svg>
