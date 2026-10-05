@@ -88,6 +88,25 @@ describe("variables tab", () => {
     expect(render(s, 80, 12, { color: false }).join("\n")).toContain("s3cret");
   });
 
+  test("a just-typed secret character shows until the reveal is cleared", () => {
+    let [s] = press(goTo(initialState(data()), "API_TOKEN"), { name: "return" }, { ch: "Z" });
+    expect(render(s, 80, 12, { color: false }).at(-1)).toContain("••••••Z");
+    expect(render({ ...s, prompt: { ...s.prompt!, reveal: false } }, 80, 12, { color: false }).at(-1)).not.toContain("Z");
+    [s] = press(s, { name: "backspace" });
+    expect(s.prompt?.reveal).toBe(false);
+  });
+
+  test("typing into a masked value wider than the screen still changes the prompt", () => {
+    const long = data();
+    long.vars[2]!.value = "x".repeat(200);
+    let [s] = press(goTo(initialState(long), "API_TOKEN"), { name: "return" });
+    const before = render(s, 40, 12, { color: false }).at(-1)!;
+    expect(before).toContain("(200 characters)");
+    expect([...before].length).toBeLessThanOrEqual(40);
+    [s] = press(s, { ch: "y" });
+    expect(render(s, 40, 12, { color: false }).at(-1)).toContain("(201 characters)");
+  });
+
   test("o opens the source line, or explains why not", () => {
     expect(press(goTo(initialState(data()), "EDITOR"), { ch: "o" })[1]).toEqual({ kind: "open", at: { file: "/home/u/.profile", line: 3 } });
     expect(press(goTo(initialState(data()), "TERM"), { ch: "o" })[1]).toBeUndefined();

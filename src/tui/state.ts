@@ -68,7 +68,8 @@ export interface State {
   /** cursor per tab, by tabId */
   cursor: Record<string, number>;
   filter: string;
-  prompt?: { for: PromptKind; label: string; value: string; secret?: boolean };
+  /** reveal: the last character was just typed and shows unmasked; the terminal driver clears it after a moment */
+  prompt?: { for: PromptKind; label: string; value: string; secret?: boolean; reveal?: boolean };
   message?: { text: string; error?: boolean };
   /** q was pressed once with pending changes */
   confirmQuit: boolean;
@@ -247,8 +248,8 @@ function submitPrompt(s: State): State {
 
 function promptKey(s: State, key: Key): State {
   const p = s.prompt!;
-  const set = (value: string): State => {
-    const next = { ...s, prompt: { ...p, value } };
+  const set = (value: string, reveal = false): State => {
+    const next = { ...s, prompt: { ...p, value, reveal } };
     // the filter applies as you type
     return p.for.kind === "filter" ? { ...next, filter: value, cursor: { ...s.cursor, [tabId(currentTab(s))]: 0 } } : next;
   };
@@ -256,7 +257,7 @@ function promptKey(s: State, key: Key): State {
   if (key.name === "return" || key.name === "enter") return submitPrompt(s);
   if (key.name === "backspace") return set([...p.value].slice(0, -1).join(""));
   if (key.ctrl && key.name === "u") return set("");
-  if (key.ch && !key.ctrl) return set(p.value + key.ch);
+  if (key.ch && !key.ctrl) return set(p.value + key.ch, true);
   return s;
 }
 

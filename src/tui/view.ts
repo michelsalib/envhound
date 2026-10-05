@@ -121,11 +121,17 @@ export function render(s: State, width: number, height: number, style: Style): s
 
   const footer = [c.dim(cell(KEYS[tab.kind], width))];
   if (s.prompt) {
-    const shown = s.prompt.secret && !s.showSecrets ? "•".repeat([...s.prompt.value].length) : s.prompt.value;
-    const room = Math.max(1, width - s.prompt.label.length - 1);
+    const masked = s.prompt.secret && !s.showSecrets;
+    const length = [...s.prompt.value].length;
+    // a long masked value is all bullets once cut, so the count is what shows each key landed
+    const count = masked ? c.dim(`  (${length} character${length === 1 ? "" : "s"})`) : "";
+    const countWidth = masked ? `  (${length} characters)`.length : 0;
+    const last = [...s.prompt.value].at(-1) ?? "";
+    const shown = !masked ? s.prompt.value : s.prompt.reveal ? "•".repeat(length - 1) + last : "•".repeat(length);
+    const room = Math.max(1, width - s.prompt.label.length - 1 - countWidth);
     const chars = [...shown];
     const visible = chars.length > room ? "…" + chars.slice(chars.length - room + 1).join("") : shown;
-    footer.push(c.bold(s.prompt.label) + visible + (style.color ? "\x1b[7m \x1b[0m" : "_"));
+    footer.push(c.bold(s.prompt.label) + visible + (style.color ? "\x1b[7m \x1b[0m" : "_") + count);
   } else if (s.message) {
     footer.push(s.message.error ? c.red(cell(s.message.text, width)) : c.green(cell(s.message.text, width)));
   } else {

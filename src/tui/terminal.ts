@@ -34,12 +34,21 @@ export function runEditor(
   let state = initialState(load(), { showSecrets: opts.showSecrets, tab: opts.tab });
 
   return new Promise((resolve, reject) => {
+    let hide: ReturnType<typeof setTimeout> | undefined;
     const draw = () => {
-      const width = stdout.columns || 80;
+      // leave the last column empty: after a full-width line, some terminals
+      // (Windows Terminal) let the \x1b[K below erase the character in it
+      const width = Math.max(1, (stdout.columns || 80) - 1);
       const height = stdout.rows || 24;
       state = { ...state, pageSize: Math.max(1, height - 8) };
       const lines = render(state, width, height, { color: opts.color });
       stdout.write("\x1b[H" + lines.map((l) => l + "\x1b[K").join("\r\n") + "\x1b[J");
+      // a just-typed secret character shows for a second, then is masked
+      clearTimeout(hide);
+      if (state.prompt?.reveal) hide = setTimeout(() => {
+        if (state.prompt) state = { ...state, prompt: { ...state.prompt, reveal: false } };
+        draw();
+      }, 1000);
     };
     const start = () => {
       stdout.write(ENTER);
@@ -48,6 +57,7 @@ export function runEditor(
       draw();
     };
     const stop = () => {
+      clearTimeout(hide);
       stdin.setRawMode(false);
       stdin.pause();
       stdout.write(LEAVE);
