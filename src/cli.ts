@@ -7,7 +7,7 @@ import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
 import { blame, envRows, pathEntries } from "./analyze.ts";
 import { completionScript, complete, SHELLS, type CompletionShell } from "./completion.ts";
-import { compareDotenv, dotenvProblems, parseDotenv } from "./dotenv.ts";
+import { compareDotenv, dotenvProblems, errorCount, parseDotenv } from "./dotenv.ts";
 import { applyChanges, confirm, renderChange } from "./edit.ts";
 import {
   blameJson,
@@ -233,14 +233,14 @@ async function main(argv: string[]): Promise<number> {
         const conflicts = keys.filter((k) => k.status === "conflict");
         if (conflicts.length) trace ??= traceBash({ home: values.home });
         const shellOrigin = Object.fromEntries(conflicts.map((k) => [k.key, blame(trace!, k.key, process.env).assignments.at(-1)]));
-        return { file: path, keys, problems: dotenvProblems(doc), shellOrigin };
+        return { file: path, keys, problems: dotenvProblems(doc, process.env), shellOrigin };
       });
       const json = reports.map((r) => ({
         ...r,
-        keys: r.keys.map((k) => ({ ...k, value: shown(k.key, k.value, opts), current: shown(k.key, k.current, opts) })),
+        keys: r.keys.map((k) => ({ ...k, value: shown(k.key, k.value, opts), expanded: shown(k.key, k.expanded, opts), template: shown(k.key, k.template, opts), current: shown(k.key, k.current, opts) })),
       }));
       print(() => reports.map((r) => renderDotenv(r, opts)).join("\n\n"), () => json);
-      return reports.some((r) => r.problems.length) ? 1 : 0;
+      return reports.some((r) => errorCount(r.problems)) ? 1 : 0;
     }
     case "completion": {
       const shell = args[0] as CompletionShell;

@@ -26,8 +26,12 @@ export interface PathRow {
 
 export interface DotenvRow {
   key: string;
-  /** effective value: the last line for this key */
+  /** effective value as written: the last line for this key */
   value: string;
+  /** value after $VAR expansion, for lines that expand */
+  expanded?: string;
+  /** the expanding text as written, e.g. `${HOST}/api` */
+  template?: string;
   line: number;
   /** compared with the current shell */
   status: "new" | "same" | "conflict";
@@ -35,13 +39,17 @@ export interface DotenvRow {
   /** lines defining this key; more than one is a duplicate */
   count: number;
   problem?: string;
+  /** the problem is a warning: the line loads fine */
+  warning?: boolean;
 }
 
 export interface DotenvData {
   file: string;
   exists: boolean;
   rows: DotenvRow[];
+  /** errors */
   problems: number;
+  warnings?: number;
 }
 
 export interface Data {

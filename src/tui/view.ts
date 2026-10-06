@@ -268,14 +268,16 @@ function dotenvLines(s: State, file: string, width: number, height: number, c: S
   rows.slice(start, start + list).forEach((r, i) => {
     const status = dotenvStatus(r, s);
     const line = r.line ? String(r.line).padStart(4) : "    ";
-    const plain = clip(`${markOf(r.pending)} ${cell(r.key, keyW)}  ${line}  ${cell(pairValue(r.key, r, s, "delete"), valueW)}  ${cell(status, statusW)}`, width);
+    const plain = clip(`${markOf(r.pending)} ${cell(r.key, keyW)}  ${line}  ${cell(pairValue(r.key, { ...r, value: r.expanded ?? r.value }, s, "delete"), valueW)}  ${cell(status, statusW)}`, width);
     const color =
       r.pending === "unset"
         ? c.red
         : r.pending
           ? c.yellow
-          : r.problem || r.count > 1
+          : (r.problem && !r.warning) || r.count > 1
             ? c.red
+            : r.problem
+              ? c.yellow
             : r.status === "conflict"
               ? c.yellow
               : r.status === "same"
@@ -289,10 +291,12 @@ function dotenvLines(s: State, file: string, width: number, height: number, c: S
 function dotenvDetail(s: State, file: string): string {
   const data = s.data.dotenv.find((d) => d.file === file);
   const where = tilde(file, s.data.home);
-  const problems = data?.problems ? ` · ${data.problems} problem(s), see envhound dotenv` : "";
+  const counts = [data?.problems ? `${data.problems} problem(s)` : "", data?.warnings ? `${data.warnings} warning(s)` : ""].filter(Boolean);
+  const problems = counts.length ? ` · ${counts.join(", ")}, see envhound dotenv` : "";
   const r = dotenvViews(s, file)[cursorOf(s)];
   if (!r) return `${where}${data?.exists ? "" : " (new file)"}${problems}`;
   const at = r.line ? `line ${r.line} of ${where}` : `new in ${where}`;
   const conflict = r.status === "conflict" ? ": loaders such as dotenv keep the shell's value" : "";
-  return `${r.key}: ${at}${conflict}${problems}`;
+  const from = r.template !== undefined && !r.pending ? `, expanded from ${mask(r.key, r.template, s)}` : "";
+  return `${r.key}: ${at}${from}${conflict}${problems}`;
 }

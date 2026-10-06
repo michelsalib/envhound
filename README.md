@@ -46,7 +46,7 @@ It stays quiet in scripts, CI, with `--json` or `--home`, and with `ENVHOUND_NO_
 | `envhound` / `envhound list` | every exported variable, with the startup `file:line` that sets it |
 | `envhound blame VAR` | every startup `file:line` that assigns `VAR`, in order; for `PATH`, what each step added or removed |
 | `envhound path` | the current `PATH` one entry per line, who added each entry, missing directories and duplicates |
-| `envhound dotenv [FILE…]` | for each key of a `.env` file (default `./.env`): its value, and whether it is new, same as your shell, or in conflict (with the startup line behind the shell's value); plus syntax problems, duplicates and `$VAR` expansion. Exits 1 if there are problems |
+| `envhound dotenv [FILE…]` | for each key of a `.env` file (default `./.env`): its value (with `$VAR`, `${VAR}` and `${VAR:-default}` expanded from your shell, then from the lines above), and whether it is new, same as your shell, or in conflict (with the startup line behind the shell's value); plus syntax problems and duplicates, and warnings for expansion. Exits 1 on problems, not on warnings |
 | `envhound set NAME=value…` | set variables for future login shells (see below) |
 | `envhound unset NAME…` | remove variables `envhound set` added |
 | `envhound path add DIR [--append]` / `envhound path remove DIR` | put a directory in `PATH` (front by default), or take it out |

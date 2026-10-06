@@ -221,7 +221,7 @@ export function renderDotenv(r: DotenvReport, o: RenderOptions): string {
   const out = [c.bold(`${tilde(r.file, o.home)}: ${r.keys.length} key${r.keys.length === 1 ? "" : "s"}`)];
   if (r.keys.length) {
     const rows = r.keys.map((k) => {
-      const value = v(k.key, k.value);
+      const value = k.expanded === undefined ? v(k.key, k.value) : `${v(k.key, k.expanded)}  (from ${v(k.key, k.template)})`;
       if (k.status === "new") return [k.key, String(k.line), "new", value];
       if (k.status === "same") return [k.key, String(k.line), "same as shell", value];
       const from = r.shellOrigin[k.key];
@@ -238,9 +238,11 @@ export function renderDotenv(r: DotenvReport, o: RenderOptions): string {
     if (rows.some((x) => x[2] === "conflict"))
       out.push("", c.dim("conflict: loaders such as dotenv keep the shell's value unless told to override; check yours"));
   }
-  if (r.problems.length) {
-    out.push("", c.bold("Problems"));
-    for (const p of r.problems) out.push(`${c.red(`line ${p.line}`)}${p.key ? ` ${p.key}` : ""}: ${p.message}`);
+  for (const [severity, title, color] of [["error", "Problems", c.red], ["warning", "Warnings", c.yellow]] as const) {
+    const ps = r.problems.filter((p) => p.severity === severity);
+    if (!ps.length) continue;
+    out.push("", c.bold(title));
+    for (const p of ps) out.push(`${color(`line ${p.line}`)}${p.key ? ` ${p.key}` : ""}: ${p.message}`);
   }
   return out.join("\n");
 }

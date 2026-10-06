@@ -1,6 +1,6 @@
 // What `envhound edit` shows: the current environment and PATH, annotated from a trace.
 import { envRows, origin, pathEntries } from "../analyze.ts";
-import { compareDotenv, dotenvProblems, parseDotenv } from "../dotenv.ts";
+import { compareDotenv, dotenvProblems, errorCount, parseDotenv } from "../dotenv.ts";
 import { readIfExists } from "../edit.ts";
 import { where } from "../format.ts";
 import { parseManaged, type Locations } from "../managed.ts";
@@ -11,19 +11,27 @@ import type { Data, DotenvData, PathRow, VarRow } from "./state.ts";
 export function loadDotenv(file: string, env: Record<string, string | undefined>): DotenvData {
   const text = readIfExists(file);
   const doc = parseDotenv(text ?? "");
-  const problems = dotenvProblems(doc);
+  const problems = dotenvProblems(doc, env);
   const counts = new Map<string, number>();
   for (const l of doc.lines) if (l.kind === "entry") counts.set(l.key!, (counts.get(l.key!) ?? 0) + 1);
-  const rows = compareDotenv(doc, env).map((k) => ({
-    key: k.key,
-    value: k.value,
+  const rows = compareDotenv(doc, env).map((k) => {
+    // errors first: they matter more than a warning on the same key
+    const problem = problems.find((p) => p.key === k.key && p.severity === "error") ?? problems.find((p) => p.key === k.key);
+    return {
+      key: k.key,
+      value: k.value,
+      expanded: k.expanded,
+      template: k.template,
     line: k.line,
     status: k.status,
     current: k.current,
-    count: counts.get(k.key) ?? 1,
-    problem: problems.find((p) => p.key === k.key)?.message,
-  }));
-  return { file, exists: text !== undefined, rows, problems: problems.length };
+      count: counts.get(k.key) ?? 1,
+      problem: problem?.message,
+      warning: problem?.severity === "warning",
+    };
+  });
+  const errors = errorCount(problems);
+  return { file, exists: text !== undefined, rows, problems: errors, warnings: problems.length - errors };
 }
 
 export function loadData(trace: Trace, env: Record<string, string | undefined>, loc: Locations, dotenvFiles: string[] = []): Data {
