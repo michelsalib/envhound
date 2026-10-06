@@ -65,3 +65,15 @@ test("envhound dotenv: conflicts point at the startup line, secrets masked, exit
   expect(report.shellOrigin.EDITOR.at.file).toEndWith(".bash_profile");
   expect(report.keys.find((k: { key: string }) => k.key === "API_TOKEN")).toMatchObject({ status: "conflict", value: "********", current: "********" });
 });
+
+test("envhound dotenv: text output shows the file's values, masked secrets, and the shell's value on conflict", () => {
+  const home = join(import.meta.dir, "fixtures", "home");
+  const r = spawnSync("bun", ["src/cli.ts", "--home", home, "dotenv", "test/fixtures/sample.env"], {
+    cwd: join(import.meta.dir, ".."),
+    encoding: "utf8",
+    env: { ...process.env, EDITOR: "vim" },
+  });
+  expect(r.stdout).toMatch(/^EDITOR +3 +conflict +nano {2}\(shell has vim, set at .*\.bash_profile:\d+\)$/m);
+  expect(r.stdout).toMatch(/^PORT +11 +new +3001$/m);
+  expect(r.stdout).toMatch(/^API_TOKEN +15 +new +\*{8}$/m);
+});

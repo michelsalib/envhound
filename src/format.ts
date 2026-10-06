@@ -221,17 +221,20 @@ export function renderDotenv(r: DotenvReport, o: RenderOptions): string {
   const out = [c.bold(`${tilde(r.file, o.home)}: ${r.keys.length} key${r.keys.length === 1 ? "" : "s"}`)];
   if (r.keys.length) {
     const rows = r.keys.map((k) => {
-      if (k.status === "new") return [k.key, String(k.line), "new", ""];
-      if (k.status === "same") return [k.key, String(k.line), "same as shell", ""];
+      const value = v(k.key, k.value);
+      if (k.status === "new") return [k.key, String(k.line), "new", value];
+      if (k.status === "same") return [k.key, String(k.line), "same as shell", value];
       const from = r.shellOrigin[k.key];
-      return [k.key, String(k.line), "conflict", `shell has ${v(k.key, k.current)}${from ? ` (set at ${where(from, o.home)})` : ""}`];
+      return [k.key, String(k.line), "conflict", `${value}  (shell has ${v(k.key, k.current)}${from ? `, set at ${where(from, o.home)}` : ""})`];
     });
     const keyW = Math.min(32, Math.max(3, ...rows.map((x) => x[0]!.length)));
     const lineW = Math.max(4, ...rows.map((x) => x[1]!.length));
     const statusW = Math.max(6, ...rows.map((x) => x[2]!.length));
+    const valueW = o.width === undefined ? 0 : Math.max(10, o.width - keyW - lineW - statusW - 6);
+    for (const x of rows) x[3] = fit(x[3]!, valueW);
     const color = (s: string) => (s.startsWith("conflict") ? c.yellow(s) : s.startsWith("same") ? c.dim(s) : c.green(s));
-    out.push(table([["KEY", "LINE", "STATUS", ""]], [keyW, lineW, statusW, 0], [c.bold, c.bold, c.bold]));
-    for (const row of rows) out.push(table([row], [keyW, lineW, statusW, 0], [(s) => s, c.dim, color, c.dim]));
+    out.push(table([["KEY", "LINE", "STATUS", "VALUE"]], [keyW, lineW, statusW, 0], [c.bold, c.bold, c.bold, c.bold]));
+    for (const row of rows) out.push(table([row], [keyW, lineW, statusW, 0], [(s) => s, c.dim, color, (s) => s]));
     if (rows.some((x) => x[2] === "conflict"))
       out.push("", c.dim("conflict: loaders such as dotenv keep the shell's value unless told to override; check yours"));
   }
