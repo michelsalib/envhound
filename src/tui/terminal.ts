@@ -12,13 +12,23 @@ const LEAVE = "\x1b[?25h\x1b[?1049l";
 
 /** Command line opening `file` at `line` in the user's editor. */
 export function editorCommand(editor: string, at: Location): [string, string[]] {
-  const [cmd = "vi", ...args] = editor.trim().split(/\s+/);
-  const base = cmd.split("/").pop() ?? cmd;
+  // a quoted program may contain spaces: "C:\Program Files\...\code.cmd" --wait
+  const quoted = /^"([^"]+)"\s*(.*)$/.exec(editor.trim());
+  const [cmd = "vi", ...args] = quoted ? [quoted[1]!, ...quoted[2]!.split(/\s+/).filter(Boolean)] : editor.trim().split(/\s+/);
+  const base = (cmd.split(/[\\/]/).pop() ?? cmd).replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
   // VS Code and its forks take file:line; vi, vim, nvim, nano, emacs, micro take +line
   if (/^(code|code-insiders|codium|cursor|windsurf)$/.test(base)) {
     return [cmd, [...args.filter((a) => a !== "--wait"), "--wait", "-g", `${at.file}:${at.line}`]];
   }
+  // Notepad can't go to a line
+  if (base === "notepad") return [cmd, [...args, at.file]];
   return [cmd, [...args, `+${at.line}`, at.file]];
+}
+
+/** Without $VISUAL or $EDITOR: vi, or on Windows VS Code when it is installed, else Notepad. */
+function defaultEditor(): string {
+  if (process.platform !== "win32") return "vi";
+  return spawnSync("where", ["code"], { stdio: "ignore", windowsHide: true }).status === 0 ? "code" : "notepad";
 }
 
 /**
@@ -71,8 +81,12 @@ export function runEditor(
 
     const openEditor = (at: Location) => {
       stop();
-      const [cmd, args] = editorCommand(process.env.VISUAL || process.env.EDITOR || "vi", at);
-      const r = spawnSync(cmd, args, { stdio: "inherit" });
+      const windows = process.platform === "win32";
+      const [cmd, args] = editorCommand(process.env.VISUAL || process.env.EDITOR || defaultEditor(), at);
+      // on Windows, editors such as code are .cmd scripts, which only run through the shell
+      const r = windows
+        ? spawnSync(cmd, args.map((a) => `"${a}"`), { stdio: "inherit", shell: true })
+        : spawnSync(cmd, args, { stdio: "inherit" });
       start();
       if (r.error) {
         state = { ...state, message: { text: `could not run ${cmd}: ${r.error.message}`, error: true } };

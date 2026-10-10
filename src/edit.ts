@@ -4,6 +4,8 @@ import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { hunks, lineDiff } from "./diff.ts";
 import { isSecret, tilde, type RenderOptions } from "./format.ts";
+import { registryText } from "./set-windows.ts";
+import { readRegistry, writeRegistry, type RegistryWrite } from "./trace/windows.ts";
 
 export interface FileChange {
   path: string;
@@ -12,6 +14,8 @@ export interface FileChange {
   after: string;
   /** file mode to enforce, e.g. 0o600 for files that may hold secrets */
   mode?: number;
+  /** Windows: path is HKCU\Environment and these writes make the change; before and after are only shown. */
+  registry?: RegistryWrite[];
 }
 
 export function readIfExists(path: string): string | undefined {
@@ -58,11 +62,19 @@ export async function confirm(question: string): Promise<boolean> {
 
 /** Write every change, backing up existing files first. Refuses if a file changed since it was read. */
 export function applyChanges(changes: FileChange[], backupDir: string): string[] {
+  const now = (c: FileChange) => (c.registry ? registryText(readRegistry().user) : readIfExists(c.path));
   for (const c of changes)
-    if (readIfExists(c.path) !== c.before) throw new Error(`${c.path} changed while envhound was running; nothing was written`);
+    if (now(c) !== c.before) throw new Error(`${c.path} changed while envhound was running; nothing was written`);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backups: string[] = [];
   for (const c of changes) {
+    if (c.registry) {
+      mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+      const backup = join(backupDir, `${stamp}-HKCU-Environment.reg`);
+      writeRegistry(c.registry, { backup });
+      backups.push(backup);
+      continue;
+    }
     if (c.before !== undefined) {
       mkdirSync(backupDir, { recursive: true, mode: 0o700 });
       const backup = join(backupDir, `${stamp}-${basename(c.path)}`);

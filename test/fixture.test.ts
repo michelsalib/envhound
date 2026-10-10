@@ -3,12 +3,12 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { blame, envRows, pathEntries, status } from "../src/analyze.ts";
 import type { Trace } from "../src/model.ts";
-import { traceBash } from "../src/trace/bash.ts";
+import { canTrace, traceBash } from "../src/trace/bash.ts";
 
 const home = join(import.meta.dir, "fixtures", "home");
 let t: Trace;
 beforeAll(() => {
-  t = traceBash({ home });
+  if (canTrace) t = traceBash({ home });
 });
 
 const last = (name: string) => blame(t, name, {}).assignments.at(-1);
@@ -17,7 +17,7 @@ const where = (name: string) => {
   return a && `${a.at.file.replace(home, "~")}:${a.at.line}`;
 };
 
-describe("fixture home", () => {
+describe.skipIf(!canTrace)("fixture home", () => {
   test("finds the line that sets a variable", () => {
     expect(where("EDITOR")).toBe("~/.bash_profile:1");
     expect(status(t, "EDITOR")).toBe("effective");

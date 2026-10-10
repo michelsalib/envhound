@@ -17,6 +17,8 @@ export function installKind(script: string): InstallKind {
   if (p.includes("/bunx-")) return "bunx";
   if (p.includes("/.bun/install/global/")) return "bun";
   if (p.includes("/node_modules/")) return "npm";
+  // install.ps1 installs envhound.mjs (with envhound.cmd next to it)
+  if (p.endsWith("/envhound.mjs")) return "standalone";
   // a checkout: src/cli.ts or dist/envhound.js; install.sh installs a file named plain `envhound`
   if (/\.[cm]?[jt]s$/.test(p)) return "dev";
   return "standalone";
@@ -96,7 +98,7 @@ export function updateNotice(current: string, script: string, stateFile: string,
     if (check) {
       // recorded first, so a failing network doesn't start a check on every run
       writeState(stateFile, { ...state, checkedAt: now });
-      spawn(process.execPath, [script, "__update-check", stateFile], { detached: true, stdio: "ignore" }).unref();
+      spawn(process.execPath, [script, "__update-check", stateFile], { detached: true, stdio: "ignore", windowsHide: true }).unref();
     }
     if (!notify) return undefined;
     writeState(stateFile, { ...readState(stateFile), notifiedAt: now });
@@ -116,6 +118,6 @@ export async function fetchLatest(stateFile: string): Promise<void> {
 }
 
 /** Where release files are downloaded from; ENVHOUND_BASE_URL overrides it (mirrors, tests). */
-export function installerUrl(env: Record<string, string | undefined>): string {
-  return `${env.ENVHOUND_BASE_URL ?? `https://github.com/${REPO}/releases/latest/download`}/install.sh`;
+export function installerUrl(env: Record<string, string | undefined>, windows = false): string {
+  return `${env.ENVHOUND_BASE_URL ?? `https://github.com/${REPO}/releases/latest/download`}/${windows ? "install.ps1" : "install.sh"}`;
 }

@@ -18,6 +18,10 @@ const PS4 =
 
 export const BASE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
+/** Native Windows has no bash startup files to replay: it keeps variables in the registry. */
+export const canTrace = process.platform !== "win32";
+export const NO_TRACE_ON_WINDOWS = "bash startup files can't be traced on Windows; envhound reads the registry there";
+
 export interface TraceOptions {
   /** Trace startup files as if HOME were this directory. */
   home?: string;
@@ -25,6 +29,7 @@ export interface TraceOptions {
 }
 
 export function traceBash(opts: TraceOptions = {}): Trace {
+  if (!canTrace) throw new Error(NO_TRACE_ON_WINDOWS);
   const home = resolve(opts.home ?? process.env.HOME ?? userInfo().homedir);
   const user = process.env.USER ?? userInfo().username;
   const initial: Record<string, string> = {

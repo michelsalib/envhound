@@ -25,7 +25,7 @@ const FLAGS: Record<string, string> = {
   "--version": "show the version",
 };
 
-export const SHELLS = ["bash", "zsh", "fish"] as const;
+export const SHELLS = ["bash", "zsh", "fish", "powershell"] as const;
 export type CompletionShell = (typeof SHELLS)[number];
 
 /** Flags that take a value: the next word is not a positional. */
@@ -37,7 +37,8 @@ const PATH_COMMANDS: Record<string, string> = { add: "put a directory in PATH", 
  * Candidates for the last word of `words` (the words after `envhound`, the last one being typed),
  * as `name` or `name<TAB>description`.
  */
-export function complete(words: string[], env: Record<string, string | undefined>): string[] {
+export function complete(words: string[], env: Record<string, string | undefined>, opts: { ignoreCase?: boolean } = {}): string[] {
+  const norm = (s: string) => (opts.ignoreCase ? s.toUpperCase() : s);
   const cur = words.at(-1) ?? "";
   const before = words.slice(0, -1);
   if (TAKES_VALUE.has(before.at(-1) ?? "")) return []; // the shell script completes paths
@@ -49,11 +50,11 @@ export function complete(words: string[], env: Record<string, string | undefined
   else if (positionals[0] === "blame" && positionals.length === 1) candidates = Object.keys(env).sort().map((n) => [n]);
   else if (positionals[0] === "unset") candidates = Object.keys(env).sort().map((n) => [n]);
   // `NAME=` so the user only types the value
-  else if (positionals[0] === "set" && !cur.includes("=")) candidates = Object.keys(env).filter((n) => n !== "PATH").sort().map((n) => [`${n}=`]);
+  else if (positionals[0] === "set" && !cur.includes("=")) candidates = Object.keys(env).filter((n) => norm(n) !== "PATH").sort().map((n) => [`${n}=`]);
   else if (positionals[0] === "path" && positionals.length === 1) candidates = Object.entries(PATH_COMMANDS);
   else if (positionals.length === 1 && positionals[0] === "completion") candidates = SHELLS.map((s) => [s]);
 
-  return candidates.filter(([name]) => name.startsWith(cur)).map(([name, desc]) => (desc ? `${name}\t${desc}` : name));
+  return candidates.filter(([name]) => norm(name).startsWith(norm(cur))).map(([name, desc]) => (desc ? `${name}\t${desc}` : name));
 }
 
 export function completionScript(shell: CompletionShell): string {
@@ -98,6 +99,23 @@ complete -c envhound -f -a '(envhound __complete (commandline -opc)[2..-1] (comm
 complete -c envhound -n '__fish_seen_subcommand_from dotenv' -F
 complete -c envhound -l file -s f -r -F
 complete -c envhound -l home -x -a '(__fish_complete_directories (commandline -ct))'
+`;
+    // Windows PowerShell drops empty arguments to programs, so the word being typed
+    // goes first, behind a "_" that keeps it from being empty
+    case "powershell":
+      return `# envhound completion for PowerShell. Add to your profile (notepad $PROFILE):
+#   envhound completion powershell | Out-String | Invoke-Expression
+Register-ArgumentCompleter -Native -CommandName envhound -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $before = @($commandAst.CommandElements | Select-Object -Skip 1 |
+        Where-Object { $_.Extent.EndOffset -lt $cursorPosition } |
+        ForEach-Object { $_.Extent.Text })
+    if ($before.Count -and $before[-1] -in '--home', '--file', '-f') { return }
+    envhound __complete-powershell "_$wordToComplete" @before 2>$null | ForEach-Object {
+        $name, $desc = $_ -split "\`t", 2
+        [System.Management.Automation.CompletionResult]::new($name, $name, 'ParameterValue', $(if ($desc) { $desc } else { $name }))
+    }
+}
 `;
   }
 }

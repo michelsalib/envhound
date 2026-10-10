@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
@@ -24,8 +25,11 @@ import {
 } from "./format.ts";
 import { banner } from "./logo.ts";
 import { locations } from "./managed.ts";
+import type { Trace } from "./model.ts";
 import { currentShellCommands, planDotenv, planShell, verify, type EditOp } from "./set.ts";
 import { traceBash } from "./trace/bash.ts";
+import { readRegistry, traceWindows, windowsTrace } from "./trace/windows.ts";
+import { planWindows, powershellCommands, verifyWindows } from "./set-windows.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import { fetchLatest, installKind, installerUrl, upgradeCommand, updateNotice } from "./update.ts";
@@ -48,7 +52,8 @@ const HELP = `Usage:
   envhound path add DIR [--append] put DIR in PATH (at the front unless --append)
   envhound path remove DIR         remove a directory envhound added
                          These write ~/.config/envhound/env.sh, loaded by one line
-                         envhound adds to your login file. With --file FILE, set and
+                         envhound adds to your login file; on Windows, your user
+                         variables (HKCU\\Environment). With --file FILE, set and
                          unset edit a .env file instead. Every change is shown as
                          a diff and confirmed first; changed files are backed up.
 
@@ -58,15 +63,17 @@ const HELP = `Usage:
                          then review them as a diff and write
 
   envhound completion SHELL
-                         print a completion script for bash, zsh or fish, e.g.
-                         eval "$(envhound completion bash)" in ~/.bashrc
+                         print a completion script for bash, zsh, fish or
+                         powershell, e.g. eval "$(envhound completion bash)" in
+                         ~/.bashrc, or in your PowerShell $PROFILE:
+                         envhound completion powershell | Out-String | Invoke-Expression
   envhound upgrade       update envhound (installed with install.sh; otherwise
                          shows the command for npm, bun, npx or bunx)
 
 Options:
   --json              machine-readable output (list, blame, path, dotenv)
   --show-secrets      don't mask values of variables like *_TOKEN or *_KEY
-  --home DIR          act as if HOME were DIR
+  --home DIR          act as if HOME were DIR (on Windows: only for backups)
   -f, --file FILE     set/unset: edit this .env file instead of the shell
   -y, --yes           set/unset/path: write without asking
   --dry-run           set/unset/path: show the diff, write nothing
@@ -76,6 +83,8 @@ Options:
 
 envhound replays a bash login shell from a clean environment with tracing on,
 so it only sees what startup files do. That runs your startup files once.
+On Windows, envhound reads the registry instead: the machine's and your
+variables, as a new terminal gets them.
 
 Once a week envhound asks npm in the background whether a newer version exists,
 and says so after a command. ENVHOUND_NO_UPDATE_CHECK=1 turns this off.
@@ -94,13 +103,21 @@ type Values = {
 /** Printed to stderr when the command ends; see update.ts. */
 let notice: string | undefined;
 
+/** On Windows, variables come from the registry instead of bash startup files. */
+const WINDOWS = process.platform === "win32";
+
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DOTENV_NAME = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
 async function main(argv: string[]): Promise<number> {
   // hidden, called by the completion scripts on every <Tab>; raw words, so no option parsing
   if (argv[0] === "__complete") {
-    for (const c of complete(argv.slice(1), process.env)) console.log(c);
+    for (const c of complete(argv.slice(1), process.env, { ignoreCase: WINDOWS })) console.log(c);
+    return 0;
+  }
+  // the PowerShell script's form: "_" + the word being typed, then the words before it
+  if (argv[0] === "__complete-powershell") {
+    for (const c of complete([...argv.slice(2), (argv[1] ?? "_").slice(1)], process.env, { ignoreCase: WINDOWS })) console.log(c);
     return 0;
   }
   // hidden, started in the background by updateNotice
@@ -141,6 +158,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const [command = "list", ...args] = positionals;
+  const trace = () => (WINDOWS ? traceWindows() : traceBash({ home: values.home }));
   // only for a person at a terminal using their real home; never in scripts, CI or tests
   const env = process.env;
   if (
@@ -152,27 +170,28 @@ async function main(argv: string[]): Promise<number> {
     !env.NO_UPDATE_NOTIFIER &&
     !["completion", "upgrade"].includes(command)
   )
-    notice = updateNotice(pkg.version, process.argv[1]!, locations(resolve(env.HOME ?? ""), env, false).updateState);
+    notice = updateNotice(pkg.version, process.argv[1]!, locations(homedir(), env, false).updateState);
   const tty = process.stdout.isTTY;
   const opts: RenderOptions = {
-    home: resolve(values.home ?? process.env.HOME ?? ""),
+    home: resolve(values.home ?? homedir()),
     color: tty && !process.env.NO_COLOR,
     width: tty ? process.stdout.columns : undefined,
     showSecrets: values["show-secrets"] ?? false,
+    shell: WINDOWS ? "windows" : "bash",
   };
   const print = (render: () => string, data: () => unknown) =>
     console.log(values.json ? JSON.stringify(data(), null, 2) : render());
 
   switch (command) {
     case "list": {
-      const rows = envRows(traceBash({ home: values.home }), process.env);
+      const rows = envRows(trace(), process.env);
       print(() => renderList(rows, opts), () => listJson(rows, opts));
       return 0;
     }
     case "blame": {
       const name = args[0];
       if (!name) return usage("blame needs a variable name, e.g. envhound blame PATH");
-      const report = blame(traceBash({ home: values.home }), name, process.env);
+      const report = blame(trace(), name, process.env);
       print(() => renderBlame(report, opts), () => blameJson(report, opts));
       return 0;
     }
@@ -189,7 +208,7 @@ async function main(argv: string[]): Promise<number> {
         return edit(ops, values, opts);
       }
       if (sub !== undefined) return usage(`unknown path command '${sub}' (add, remove)`);
-      const entries = pathEntries(traceBash({ home: values.home }), process.env.PATH ?? "");
+      const entries = pathEntries(trace(), process.env.PATH ?? "");
       print(() => renderPath(entries, opts), () => entries);
       return 0;
     }
@@ -215,8 +234,8 @@ async function main(argv: string[]): Promise<number> {
       // files given on the command line (or --file) open first; otherwise ./.env if there is one
       const named = [...args, ...(values.file ? [values.file] : [])].map((f) => resolve(f));
       const files = named.length ? [...new Set(named)] : existsSync(".env") ? [resolve(".env")] : [];
-      process.stderr.write("tracing startup files…\r");
-      const load = () => loadData(traceBash({ home: values.home }), process.env, loc, files);
+      process.stderr.write(WINDOWS ? "reading the registry…\r" : "tracing startup files…\r");
+      const load = () => loadData(trace(), process.env, loc, files);
       const ops = await runEditor(load, { ...opts, tab: named.length ? 2 : 0 });
       process.stderr.write("\x1b[K");
       if (!ops?.length) return 0;
@@ -225,14 +244,14 @@ async function main(argv: string[]): Promise<number> {
     case "dotenv": {
       const files = args.length ? args : [".env"];
       // trace only when needed: it runs the startup files
-      let trace: ReturnType<typeof traceBash> | undefined;
+      let shellTrace: Trace | undefined;
       const reports: DotenvReport[] = files.map((file) => {
         const path = resolve(file);
         const doc = parseDotenv(readFileSync(path, "utf8"));
         const keys = compareDotenv(doc, process.env);
         const conflicts = keys.filter((k) => k.status === "conflict");
-        if (conflicts.length) trace ??= traceBash({ home: values.home });
-        const shellOrigin = Object.fromEntries(conflicts.map((k) => [k.key, blame(trace!, k.key, process.env).assignments.at(-1)]));
+        if (conflicts.length) shellTrace ??= trace();
+        const shellOrigin = Object.fromEntries(conflicts.map((k) => [k.key, blame(shellTrace!, k.key, process.env).assignments.at(-1)]));
         return { file: path, keys, problems: dotenvProblems(doc, process.env), shellOrigin };
       });
       const json = reports.map((r) => ({
@@ -259,11 +278,16 @@ async function main(argv: string[]): Promise<number> {
 async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise<number> {
   const c = paint(opts);
   const loc = locations(opts.home, process.env, values.home !== undefined);
-  // shell changes go to envhound's file; the others to their .env file
+  // shell changes go to envhound's file (on Windows, the user's variables); the others to their .env file
   const shellOps = ops.filter((op) => !("file" in op && op.file));
   const files = [...new Set(ops.flatMap((op) => ("file" in op && op.file ? [op.file] : [])))];
+  const planShellOps = () => {
+    if (!WINDOWS) return planShell(shellOps, loc, traceBash({ home: values.home }));
+    const reg = readRegistry();
+    return planWindows(shellOps, reg.user, windowsTrace(reg, process.env));
+  };
   const plans = [
-    ...(shellOps.length ? [planShell(shellOps, loc, traceBash({ home: values.home }))] : []),
+    ...(shellOps.length ? [planShellOps()] : []),
     ...files.map((f) => planDotenv(ops.filter((op) => "file" in op && op.file === f), f, process.env)),
   ];
   const plan = { changes: plans.flatMap((p) => p.changes), notes: plans.flatMap((p) => p.notes) };
@@ -292,22 +316,23 @@ async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise
   if (backups.length) console.log(c.dim(`backups in ${tilde(loc.backups, opts.home)}`));
   if (!shellOps.length) return 0;
 
-  const checks = verify(shellOps, traceBash({ home: values.home }), loc);
+  const checks = WINDOWS ? verifyWindows(shellOps, traceWindows()) : verify(shellOps, traceBash({ home: values.home }), loc);
   for (const check of checks) console.log(check.ok ? c.green(`✓ ${check.message}`) : c.yellow(`! ${check.message}`));
-  const commands = currentShellCommands(shellOps);
-  if (commands.length) console.log(c.dim("\nThis shell is unchanged. To apply it here too, run:\n") + commands.map((x) => `  ${x}`).join("\n"));
+  const commands = WINDOWS ? powershellCommands(shellOps) : currentShellCommands(shellOps);
+  const how = WINDOWS ? "This terminal is unchanged. To apply it here too, run in PowerShell:" : "This shell is unchanged. To apply it here too, run:";
+  if (commands.length) console.log(c.dim(`\n${how}\n`) + commands.map((x) => `  ${x}`).join("\n"));
   return checks.every((x) => x.ok) ? 0 : 1;
 }
 
-/** Re-runs install.sh into the same directory; other installs get their own command. */
+/** Re-runs install.sh (install.ps1 on Windows) into the same directory; other installs get their own command. */
 async function upgrade(): Promise<number> {
   const script = realpathSync(process.argv[1]!);
   const kind = installKind(script);
   if (kind !== "standalone") {
-    console.log(`This envhound was not installed with install.sh. Update it with:\n  ${upgradeCommand(kind)}`);
+    console.log(`This envhound was not installed with ${WINDOWS ? "install.ps1" : "install.sh"}. Update it with:\n  ${upgradeCommand(kind)}`);
     return 0;
   }
-  const url = installerUrl(process.env);
+  const url = installerUrl(process.env, WINDOWS);
   let installer: string;
   try {
     if (url.startsWith("file:")) installer = readFileSync(fileURLToPath(url), "utf8");
@@ -320,12 +345,17 @@ async function upgrade(): Promise<number> {
     console.error(`envhound: could not download ${url}: ${e instanceof Error ? e.message : e}`);
     return 1;
   }
-  const r = spawnSync("sh", ["-s"], {
-    input: installer,
-    stdio: ["pipe", "inherit", "inherit"],
-    env: { ...process.env, ENVHOUND_INSTALL_DIR: dirname(script) },
-  });
-  return r.status ?? 1;
+  const env = { ...process.env, ENVHOUND_INSTALL_DIR: dirname(script) };
+  if (!WINDOWS) return spawnSync("sh", ["-s"], { input: installer, stdio: ["pipe", "inherit", "inherit"], env }).status ?? 1;
+  // PowerShell runs a script file, so the installer goes to a temporary one
+  const dir = mkdtempSync(join(tmpdir(), "envhound-"));
+  try {
+    writeFileSync(join(dir, "install.ps1"), installer);
+    const args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", join(dir, "install.ps1")];
+    return spawnSync("powershell.exe", args, { stdio: "inherit", env }).status ?? 1;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function usage(message: string): number {

@@ -15,10 +15,15 @@ export interface Locations {
   updateState: string;
 }
 
-/** With an explicit home (--home, tests) XDG variables are ignored: they describe the real home. */
-export function locations(home: string, env: Record<string, string | undefined>, explicitHome: boolean): Locations {
+/**
+ * With an explicit home (--home, tests) XDG variables and LOCALAPPDATA are ignored: they describe the real home.
+ * On Windows, backups and the update check's state go where apps keep theirs, %LOCALAPPDATA%.
+ */
+export function locations(home: string, env: Record<string, string | undefined>, explicitHome: boolean, windows = process.platform === "win32"): Locations {
   const config = (!explicitHome && env.XDG_CONFIG_HOME) || join(home, ".config");
-  const state = (!explicitHome && env.XDG_STATE_HOME) || join(home, ".local", "state");
+  const state = windows
+    ? (!explicitHome && env.LOCALAPPDATA) || join(home, "AppData", "Local")
+    : (!explicitHome && env.XDG_STATE_HOME) || join(home, ".local", "state");
   return { home, managed: join(config, "envhound", "env.sh"), backups: join(state, "envhound", "backups"), updateState: join(state, "envhound", "update.json") };
 }
 

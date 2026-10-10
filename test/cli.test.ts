@@ -7,13 +7,14 @@ import { banner } from "../src/logo.ts";
 const root = join(import.meta.dir, "..");
 const home = join(import.meta.dir, "fixtures", "home");
 const hasNode = spawnSync("node", ["--version"]).status === 0;
+const onWindows = process.platform === "win32";
 
 beforeAll(() => {
   const r = spawnSync("bun", ["run", "build"], { cwd: root, encoding: "utf8" });
   if (r.status !== 0) throw new Error(r.stderr);
 });
 
-test.skipIf(!hasNode)("built CLI runs on node", () => {
+test.skipIf(!hasNode || onWindows)("built CLI runs on node", () => {
   const r = spawnSync("node", ["dist/envhound.js", "--home", home, "--json", "blame", "API_TOKEN"], { cwd: root, encoding: "utf8" });
   expect(r.status).toBe(0);
   const out = JSON.parse(r.stdout);
@@ -43,4 +44,13 @@ test.skipIf(!hasNode)("unknown command exits with usage error", () => {
   const r = spawnSync("node", ["dist/envhound.js", "nope"], { cwd: root, encoding: "utf8" });
   expect(r.status).toBe(2);
   expect(r.stderr).toContain("unknown command");
+});
+
+test.skipIf(!hasNode || !onWindows)("on Windows, blame reads the registry, and dotenv works", () => {
+  // checks without printing: the output holds this machine's real values
+  const r = spawnSync("node", ["dist/envhound.js", "blame", "PATH"], { cwd: root, encoding: "utf8" });
+  expect(r.status).toBe(0);
+  expect(r.stdout.includes("HKLM\\…\\Environment")).toBe(true);
+  const d = spawnSync("node", ["dist/envhound.js", "dotenv", "test/fixtures/sample.env"], { cwd: root, encoding: "utf8" });
+  expect(d.stdout.includes("PORT")).toBe(true);
 });

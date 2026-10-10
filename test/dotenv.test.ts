@@ -54,7 +54,7 @@ describe("compareDotenv", () => {
   });
 });
 
-test("envhound dotenv: conflicts point at the startup line, secrets masked, exit 1 on problems", () => {
+test.skipIf(process.platform === "win32")("envhound dotenv: conflicts point at the startup line, secrets masked, exit 1 on problems", () => {
   const home = join(import.meta.dir, "fixtures", "home");
   const r = spawnSync("bun", ["src/cli.ts", "--home", home, "--json", "dotenv", "test/fixtures/sample.env"], {
     cwd: join(import.meta.dir, ".."),
@@ -67,7 +67,7 @@ test("envhound dotenv: conflicts point at the startup line, secrets masked, exit
   expect(report.keys.find((k: { key: string }) => k.key === "API_TOKEN")).toMatchObject({ status: "conflict", value: "********", current: "********" });
 });
 
-test("envhound dotenv: text output shows the file's values, masked secrets, and the shell's value on conflict", () => {
+test.skipIf(process.platform === "win32")("envhound dotenv: text output shows the file's values, masked secrets, and the shell's value on conflict", () => {
   const home = join(import.meta.dir, "fixtures", "home");
   const r = spawnSync("bun", ["src/cli.ts", "--home", home, "dotenv", "test/fixtures/sample.env"], {
     cwd: join(import.meta.dir, ".."),
