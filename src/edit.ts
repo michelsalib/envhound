@@ -14,12 +14,12 @@ import {
 import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { hunks, lineDiff } from "./diff.ts";
-import { isSecret, tilde, type RenderOptions } from "./format.ts";
+import { isSecret, type RenderOptions, tilde } from "./format.ts";
 import { registryText } from "./set-windows.ts";
 import {
+	type RegistryWrite,
 	readRegistry,
 	writeRegistry,
-	type RegistryWrite,
 } from "./trace/windows.ts";
 
 export interface FileChange {

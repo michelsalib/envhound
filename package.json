@@ -34,7 +34,8 @@
 		"build": "bun build src/cli.ts --target=node --minify --outfile dist/envhound.js",
 		"test": "bun test",
 		"typecheck": "tsc",
-		"prepublishOnly": "bun run typecheck && bun run build && bun test"
+		"lint": "biome check",
+		"prepublishOnly": "bun run typecheck && bun run lint && bun run build && bun test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.15",

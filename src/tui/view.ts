@@ -4,15 +4,15 @@ import { isSecret, tilde } from "../format.ts";
 import {
 	currentTab,
 	cursorOf,
-	dotenvViews,
-	pathViews,
-	tabs,
-	varViews,
 	type DotenvView,
+	dotenvViews,
 	type PathView,
+	pathViews,
 	type State,
 	type TabDef,
+	tabs,
 	type VarView,
+	varViews,
 } from "./state.ts";
 
 export interface Style {
@@ -39,6 +39,7 @@ type Styles = ReturnType<typeof styles>;
 /** Cut or pad plain text to exactly `w` columns. */
 function cell(s: string, w: number): string {
 	if (w <= 0) return "";
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
 	const clean = s.replace(/[\x00-\x1f\x7f]/g, " ");
 	const chars = [...clean];
 	return chars.length > w

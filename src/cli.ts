@@ -15,10 +15,10 @@ import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
 import { blame, envRows, pathEntries } from "./analyze.ts";
 import {
-	completionScript,
-	complete,
-	SHELLS,
 	type CompletionShell,
+	complete,
+	completionScript,
+	SHELLS,
 } from "./completion.ts";
 import {
 	compareDotenv,
@@ -29,28 +29,33 @@ import {
 import { applyChanges, confirm, renderChange } from "./edit.ts";
 import {
 	blameJson,
+	type DotenvReport,
 	listJson,
 	paint,
+	type RenderOptions,
 	renderBlame,
 	renderDotenv,
 	renderList,
 	renderPath,
 	shown,
 	tilde,
-	type DotenvReport,
-	type RenderOptions,
 } from "./format.ts";
 import { banner } from "./logo.ts";
 import { locations, loginFile, loginShell } from "./managed.ts";
 import type { Trace } from "./model.ts";
 import {
 	currentShellCommands,
+	type EditOp,
 	isPathName,
 	planDotenv,
 	planShell,
 	verify,
-	type EditOp,
 } from "./set.ts";
+import {
+	planWindows,
+	powershellCommands,
+	verifyWindows,
+} from "./set-windows.ts";
 import { traceBash } from "./trace/bash.ts";
 import {
 	powershellEnv,
@@ -58,19 +63,14 @@ import {
 	traceWindows,
 	windowsTrace,
 } from "./trace/windows.ts";
-import {
-	planWindows,
-	powershellCommands,
-	verifyWindows,
-} from "./set-windows.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import {
 	fetchLatest,
-	installKind,
 	installerUrl,
-	upgradeCommand,
+	installKind,
 	updateNotice,
+	upgradeCommand,
 } from "./update.ts";
 
 const TAGLINE =

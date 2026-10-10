@@ -17,7 +17,7 @@ import {
 } from "../dotenv.ts";
 import { readIfExists } from "../edit.ts";
 import { where } from "../format.ts";
-import { parseManaged, type Locations } from "../managed.ts";
+import { type Locations, parseManaged } from "../managed.ts";
 import type { Assignment, Trace } from "../model.ts";
 import { USER } from "../trace/windows.ts";
 import type { Data, DotenvData, PathRow, VarRow } from "./state.ts";

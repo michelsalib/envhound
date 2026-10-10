@@ -70,12 +70,11 @@ export function tilde(s: string, home: string): string {
 
 /** One-line form of a value: control characters made visible. */
 const oneLine = (s: string) =>
-	s
-		.replace(/\n/g, "\\n")
-		.replace(
-			/[\x00-\x1f\x7f]/g,
-			(c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`,
-		);
+	s.replace(/\n/g, "\\n").replace(
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+		/[\x00-\x1f\x7f]/g,
+		(c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`,
+	);
 
 function fit(s: string, width: number | undefined): string {
 	return width !== undefined && width > 0 && s.length > width

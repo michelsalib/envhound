@@ -33,25 +33,27 @@ function ansiC(s: string, i: number): [string, number] {
 		}
 		const c = s[i + 1]!;
 		const rest = s.slice(i + 2);
-		let m: string | undefined;
+		const octal = /^[0-7]{1,3}/.exec(s.slice(i + 1))?.[0];
+		const hex = c === "x" ? /^[0-9a-fA-F]{1,2}/.exec(rest)?.[0] : undefined;
+		const unicode =
+			c === "u"
+				? /^[0-9a-fA-F]{1,4}/.exec(rest)?.[0]
+				: c === "U"
+					? /^[0-9a-fA-F]{1,8}/.exec(rest)?.[0]
+					: undefined;
 		if (c in SIMPLE) {
 			bytes.push(SIMPLE[c]!);
 			i += 2;
-		} else if ((m = /^[0-7]{1,3}/.exec(s.slice(i + 1))?.[0])) {
-			bytes.push(parseInt(m, 8) & 255);
-			i += 1 + m.length;
-		} else if (c === "x" && (m = /^[0-9a-fA-F]{1,2}/.exec(rest)?.[0])) {
-			bytes.push(parseInt(m, 16));
-			i += 2 + m.length;
-		} else if (
-			(c === "u" || c === "U") &&
-			(m = (c === "u" ? /^[0-9a-fA-F]{1,4}/ : /^[0-9a-fA-F]{1,8}/).exec(
-				rest,
-			)?.[0])
-		) {
-			const cp = parseInt(m, 16);
+		} else if (octal) {
+			bytes.push(parseInt(octal, 8) & 255);
+			i += 1 + octal.length;
+		} else if (hex) {
+			bytes.push(parseInt(hex, 16));
+			i += 2 + hex.length;
+		} else if (unicode) {
+			const cp = parseInt(unicode, 16);
 			push(cp <= 0x10ffff ? String.fromCodePoint(cp) : "�");
-			i += 2 + m.length;
+			i += 2 + unicode.length;
 		} else if (c === "c" && rest.length > 0) {
 			bytes.push(rest.charCodeAt(0) & 31);
 			i += 3;

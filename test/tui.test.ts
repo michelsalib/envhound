@@ -8,17 +8,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cmdArg, editorCommand, windowsCommand } from "../src/tui/terminal.ts";
 import {
+	type Data,
 	dotenvViews,
 	handleKey,
 	initialState,
-	pathViews,
-	varViews,
-	type Data,
 	type Key,
+	pathViews,
 	type State,
+	varViews,
 } from "../src/tui/state.ts";
+import { cmdArg, editorCommand, windowsCommand } from "../src/tui/terminal.ts";
 import { render } from "../src/tui/view.ts";
 
 const ENV = join(process.cwd(), ".env");
@@ -86,7 +86,7 @@ function press(
 	s: State,
 	...keys: Key[]
 ): [State, ReturnType<typeof handleKey>[1]] {
-	let effect;
+	let effect: ReturnType<typeof handleKey>[1];
 	for (const k of keys) [s, effect] = handleKey(s, k);
 	return [s, effect];
 }

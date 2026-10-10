@@ -2,6 +2,7 @@
 import type { Quote } from "./dotenv.ts";
 
 const SAFE = /^[A-Za-z0-9_./:@%+,=-]+$/;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
 const CONTROL = /[\x00-\x1f\x7f]/g;
 
 const escapeControl = (c: string) =>
@@ -11,6 +12,7 @@ const escapeControl = (c: string) =>
 /** A shell word that evaluates to exactly `v` in bash and zsh, and stays on one line. */
 export function shellQuote(v: string): string {
 	if (SAFE.test(v)) return v;
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
 	if (/[\x00-\x1f\x7f]/.test(v))
 		return (
 			"$'" + v.replace(/[\\']/g, "\\$&").replace(CONTROL, escapeControl) + "'"

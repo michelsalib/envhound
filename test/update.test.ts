@@ -1,8 +1,8 @@
 // The weekly update check, install.sh and `envhound upgrade`. Installs use a local
 // file:// "release" built from the source, so nothing touches the network.
 import { beforeAll, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	copyFileSync,
 	existsSync,

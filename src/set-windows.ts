@@ -9,9 +9,9 @@ import type { Check, EditOp, Plan } from "./set.ts";
 import {
 	expand,
 	MACHINE,
-	USER,
 	type RegistryValue,
 	type RegistryWrite,
+	USER,
 } from "./trace/windows.ts";
 
 const isPathName = (name: string) => name.toUpperCase() === "PATH";
@@ -152,6 +152,7 @@ export function verifyWindows(ops: EditOp[], trace: Trace): Check[] {
 	const key = dirKey(trace);
 	const path = splitPath(trace, lookup(trace, trace.final, "PATH")).map(key);
 	const last = (name: string) => chain(trace, name).at(-1);
+	// biome-ignore lint/suspicious/useIterableCallbackReturn: the switch covers every op kind, and each case returns
 	return ops.map((op): Check => {
 		switch (op.kind) {
 			case "set": {
@@ -201,6 +202,7 @@ export function powershellCommands(
 	ops: EditOp[],
 	showSecrets = false,
 ): string[] {
+	// biome-ignore lint/suspicious/useIterableCallbackReturn: the switch covers every op kind, and each case returns
 	return ops.flatMap((op) => {
 		switch (op.kind) {
 			case "set":

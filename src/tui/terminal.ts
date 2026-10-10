@@ -1,11 +1,11 @@
 // Terminal driver for `envhound edit`: raw keys in, full redraws out, on the
 // alternate screen so the user's scrollback is left as it was.
-import { spawnSync, type SpawnSyncOptions } from "node:child_process";
+import { type SpawnSyncOptions, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { emitKeypressEvents } from "node:readline";
 import type { Location } from "../model.ts";
 import type { EditOp } from "../set.ts";
-import { handleKey, initialState, type Data, type Key } from "./state.ts";
+import { type Data, handleKey, initialState, type Key } from "./state.ts";
 import { render } from "./view.ts";
 
 const ENTER = "\x1b[?1049h\x1b[?25l"; // alternate screen, hide cursor

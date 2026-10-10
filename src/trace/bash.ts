@@ -172,6 +172,7 @@ export function parseTrace(
 	const frames = new Map<string, Set<string>>(); // function call -> its local names
 
 	// Lines without the marker (shell warnings, multi-line values) belong to the previous record.
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: \x1f is the record marker PS4 starts with
 	for (const record of stderr.split(/(?:^|\n)\x1f+/).slice(1)) {
 		const fields = record.split(SEP);
 		if (fields.length < 6) continue;

@@ -3,20 +3,20 @@
 import { join } from "node:path";
 import { chain, pathEntries } from "./analyze.ts";
 import { parseDotenv, serializeDotenv, setKey, unsetKey } from "./dotenv.ts";
-import { readIfExists, type FileChange } from "./edit.ts";
+import { type FileChange, readIfExists } from "./edit.ts";
 import { isSecret, where } from "./format.ts";
 import {
+	addPath,
 	HEADER,
 	HOOK,
-	addPath,
 	hasHook,
+	type Locations,
 	loginFile,
 	parseManaged,
 	removePath,
 	serializeManaged,
 	setVar,
 	unsetVar,
-	type Locations,
 } from "./managed.ts";
 import type { Assignment, Trace } from "./model.ts";
 import { shellQuote } from "./quote.ts";
@@ -169,6 +169,7 @@ export function verify(
 		return c.slice(ours + 1).map((a) => where(a, loc.home));
 	};
 	const path = (trace.final.PATH ?? "").split(":");
+	// biome-ignore lint/suspicious/useIterableCallbackReturn: the switch covers every op kind, and each case returns
 	return ops.map((op): Check => {
 		switch (op.kind) {
 			case "set": {
@@ -216,6 +217,7 @@ export function currentShellCommands(
 	ops: EditOp[],
 	showSecrets = false,
 ): string[] {
+	// biome-ignore lint/suspicious/useIterableCallbackReturn: the switch covers every op kind, and each case returns
 	return ops.flatMap((op) => {
 		switch (op.kind) {
 			case "set":

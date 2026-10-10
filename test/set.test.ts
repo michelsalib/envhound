@@ -15,16 +15,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lineDiff } from "../src/diff.ts";
-import { applyChanges } from "../src/edit.ts";
 import {
 	parseDotenv,
 	serializeDotenv,
 	setKey,
 	unsetKey,
 } from "../src/dotenv.ts";
+import { applyChanges } from "../src/edit.ts";
 import {
-	HEADER,
 	addPath,
+	HEADER,
 	parseManaged,
 	removePath,
 	serializeManaged,

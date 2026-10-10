@@ -6,33 +6,33 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { blame, envRows, pathEntries } from "../src/analyze.ts";
 import { renderChange } from "../src/edit.ts";
-import { renderBlame, renderList, type RenderOptions } from "../src/format.ts";
+import { type RenderOptions, renderBlame, renderList } from "../src/format.ts";
+import { locations } from "../src/managed.ts";
+import type { EditOp } from "../src/set.ts";
 import {
 	planWindows,
 	powershellCommands,
 	verifyWindows,
 } from "../src/set-windows.ts";
-import type { EditOp } from "../src/set.ts";
-import { locations } from "../src/managed.ts";
+import {
+	expand,
+	MACHINE,
+	powershell,
+	type Registry,
+	readRegistry,
+	SESSION,
+	USER,
+	windowsTrace,
+	writeRegistry,
+} from "../src/trace/windows.ts";
 import { loadData } from "../src/tui/load.ts";
 import {
 	handleKey,
 	initialState,
-	varViews,
 	type Key,
 	type State,
+	varViews,
 } from "../src/tui/state.ts";
-import {
-	MACHINE,
-	SESSION,
-	USER,
-	expand,
-	powershell,
-	readRegistry,
-	windowsTrace,
-	writeRegistry,
-	type Registry,
-} from "../src/trace/windows.ts";
 
 const reg: Registry = {
 	machine: [
