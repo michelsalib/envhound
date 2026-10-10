@@ -43,9 +43,11 @@ export function traceBash(opts: TraceOptions = {}): Trace {
   const dir = mkdtempSync(join(tmpdir(), "envhound-"));
   const envFile = join(dir, "env");
   try {
-    // Startup files may print to stdout, so the final env goes to a file instead.
-    const r = spawnSync("bash", ["-lixc", `env -0 > '${envFile}'`], {
-      env: { ...initial, PS4 },
+    // Startup files may print to stdout, so the final env goes to a file instead. Its path comes in through
+    // the environment, never spliced into the command (a ' in TMPDIR), and `command -p` finds env even if
+    // the startup files left PATH without it.
+    const r = spawnSync("bash", ["-lixc", 'command -p env -0 > "$ENVHOUND_ENV_FILE"'], {
+      env: { ...initial, PS4, ENVHOUND_ENV_FILE: envFile },
       cwd: home,
       stdio: ["ignore", "ignore", "pipe"],
       timeout: opts.timeoutMs ?? 15_000,
@@ -67,6 +69,7 @@ export function traceBash(opts: TraceOptions = {}): Trace {
       );
     const final = parseEnv0(env);
     delete final.PS4;
+    delete final.ENVHOUND_ENV_FILE;
     return parseTrace(r.stderr, initial, final);
   } finally {
     rmSync(dir, { recursive: true, force: true });

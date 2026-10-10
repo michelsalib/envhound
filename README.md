@@ -43,6 +43,8 @@ pathprepend() is defined in ~/.profile
 ## Install
 
 envhound is a single JavaScript file that runs on Node ≥ 20 or Bun, on Linux, macOS and Windows.
+On Linux and macOS it reads **bash** startup files only, for now: if your login shell is zsh (the default on
+macOS) or fish, envhound shows what a bash login shell gets and says so; see [Status](#status).
 
 ```sh
 npx envhound blame PATH        # or: bunx envhound blame PATH, nothing to install
@@ -225,7 +227,10 @@ difference between this terminal and a new one.
 
 ## Status
 
-- **Linux and macOS**: bash startup files.
+- **Linux and macOS**: bash startup files. With another login shell, such as zsh (the default on macOS) or
+  fish, envhound still replays bash and warns you: `list`, `blame` and `path` show what a bash login shell
+  gets, and `set`, `unset` and `path add|remove` write a file that only reaches your shell if its startup
+  files load `~/.profile` (or `~/.bash_profile`).
 - **Windows**: the registry, in PowerShell or cmd. In WSL, envhound reads bash startup files, as on Linux.
 
 Planned: zsh and fish, PowerShell profiles, and a `.deb`.

@@ -1,6 +1,7 @@
 // Terminal driver for `envhound edit`: raw keys in, full redraws out, on the
 // alternate screen so the user's scrollback is left as it was.
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncOptions } from "node:child_process";
+import { existsSync } from "node:fs";
 import { emitKeypressEvents } from "node:readline";
 import type { Location } from "../model.ts";
 import type { EditOp } from "../set.ts";
@@ -23,6 +24,35 @@ export function editorCommand(editor: string, at: Location): [string, string[]] 
   // Notepad can't go to a line
   if (base === "notepad") return [cmd, [...args, at.file]];
   return [cmd, [...args, `+${at.line}`, at.file]];
+}
+
+// cmd.exe's metacharacters, escaped with ^ as cross-spawn does (https://qntm.org/cmd)
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+
+/** One argument as cmd.exe passes it on intact: quoted the way Windows programs split arguments, then ^-escaped. */
+export function cmdArg(arg: string): string {
+  const quoted = `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")}"`;
+  return quoted.replace(CMD_META, "^$1");
+}
+
+/**
+ * How to start an editor on Windows. A program (.exe) starts directly, so Node quotes its arguments; a .cmd or
+ * .bat script (code, cursor…) only runs through cmd.exe, so the whole line is escaped for it, never left to
+ * `shell: true`, which would let cmd interpret a quote, & or %VAR% in a path.
+ */
+export function windowsCommand(resolved: string, args: string[]): [string, string[], SpawnSyncOptions] {
+  if (!/\.(cmd|bat)$/i.test(resolved)) return [resolved, args, {}];
+  const line = [resolved.replace(CMD_META, "^$1"), ...args.map(cmdArg)].join(" ");
+  return [process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `"${line}"`], { windowsVerbatimArguments: true }];
+}
+
+/** The file Windows would run for `cmd`: `code` is code.cmd somewhere in Path. */
+function resolveWindows(cmd: string): string {
+  if (/\.[^\\/.]+$/.test(cmd)) return cmd;
+  const exts = (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
+  if (/[\\/]/.test(cmd)) return exts.map((e) => cmd + e).find((f) => existsSync(f)) ?? cmd;
+  const r = spawnSync("where", [cmd], { encoding: "utf8", windowsHide: true });
+  return (r.status === 0 && r.stdout.split(/\r?\n/)[0]?.trim()) || cmd;
 }
 
 /** Without $VISUAL or $EDITOR: vi, or on Windows VS Code when it is installed, else Notepad. */
@@ -83,10 +113,8 @@ export function runEditor(
       stop();
       const windows = process.platform === "win32";
       const [cmd, args] = editorCommand(process.env.VISUAL || process.env.EDITOR || defaultEditor(), at);
-      // on Windows, editors such as code are .cmd scripts, which only run through the shell
-      const r = windows
-        ? spawnSync(cmd, args.map((a) => `"${a}"`), { stdio: "inherit", shell: true })
-        : spawnSync(cmd, args, { stdio: "inherit" });
+      const [file, argv, extra] = windows ? windowsCommand(resolveWindows(cmd), args) : [cmd, args, {}];
+      const r = spawnSync(file, argv, { ...extra, stdio: "inherit" });
       start();
       if (r.error) {
         state = { ...state, message: { text: `could not run ${cmd}: ${r.error.message}`, error: true } };

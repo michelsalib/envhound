@@ -3,12 +3,15 @@
 // (HKLM) come first in PATH and lose to the user's for other variables.
 import { chain, dirKey, lookup, splitPath } from "./analyze.ts";
 import type { FileChange } from "./edit.ts";
+import { isSecret } from "./format.ts";
 import type { Trace } from "./model.ts";
 import type { Check, EditOp, Plan } from "./set.ts";
 import { expand, MACHINE, USER, type RegistryValue, type RegistryWrite } from "./trace/windows.ts";
 
 const isPathName = (name: string) => name.toUpperCase() === "PATH";
 const isText = (v: RegistryValue) => v.kind === "String" || v.kind === "ExpandString";
+// a %VAR% reference only expands in an ExpandString value
+const hasReference = (value: string) => /%[^%=]+%/.test(value);
 
 /** The user's variables as shown in a diff: NAME=value, and Path one entry per line. */
 export function registryText(values: RegistryValue[]): string {
@@ -38,7 +41,8 @@ export function planWindows(ops: EditOp[], user: RegistryValue[], trace: Trace):
   const entries = () => splitPath(trace, pathOf()?.value ?? "").filter(Boolean);
   const expanded = (d: string) => key(expand(d, get));
   const setPath = (dirs: string[]) => {
-    const kind = (pathOf()?.kind as RegistryWrite["kind"]) ?? "ExpandString";
+    // a Path stored as a plain String (setx writes those) must become ExpandString to hold %USERPROFILE%\…
+    const kind = dirs.some(hasReference) ? "ExpandString" : ((pathOf()?.kind as RegistryWrite["kind"]) ?? "ExpandString");
     put({ name: pathOf()?.name ?? "Path", kind, value: dirs.join(";") });
     writes.set("PATH", { name: pathOf()!.name, kind, value: dirs.join(";") });
   };
@@ -46,8 +50,7 @@ export function planWindows(ops: EditOp[], user: RegistryValue[], trace: Trace):
   for (const op of ops) {
     switch (op.kind) {
       case "set": {
-        // a %VAR% reference only expands in an ExpandString value
-        const kind = (find(op.name)?.kind as RegistryWrite["kind"]) ?? (/%[^%=]+%/.test(op.value) ? "ExpandString" : "String");
+        const kind = hasReference(op.value) ? "ExpandString" : ((find(op.name)?.kind as RegistryWrite["kind"]) ?? "String");
         if (machine(op.name)) notes.push(`${op.name} is also set at ${MACHINE}, for every user; yours wins in your new terminals`);
         put({ name: op.name, kind, value: op.value });
         writes.set(op.name.toUpperCase(), { name: find(op.name)!.name, kind, value: op.value });
@@ -122,11 +125,12 @@ export function verifyWindows(ops: EditOp[], trace: Trace): Check[] {
 
 const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
-/** PowerShell commands that make the same change in the current terminal. */
-export function powershellCommands(ops: EditOp[]): string[] {
+/** PowerShell commands that make the same change in the current terminal. Secret values are left out unless `showSecrets`. */
+export function powershellCommands(ops: EditOp[], showSecrets = false): string[] {
   return ops.flatMap((op) => {
     switch (op.kind) {
       case "set":
+        if (!showSecrets && isSecret(op.name)) return [`# $env:${op.name} = …  (value hidden; --show-secrets prints this command)`];
         return [`$env:${op.name} = ${op.value.includes("%") ? `[Environment]::ExpandEnvironmentVariables(${psQuote(op.value)})` : psQuote(op.value)}`];
       case "unset":
         return [`Remove-Item Env:${op.name}`];

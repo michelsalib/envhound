@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { chain, pathEntries } from "./analyze.ts";
 import { parseDotenv, serializeDotenv, setKey, unsetKey } from "./dotenv.ts";
 import { readIfExists, type FileChange } from "./edit.ts";
-import { where } from "./format.ts";
+import { isSecret, where } from "./format.ts";
 import {
   HEADER,
   HOOK,
@@ -27,6 +27,9 @@ export type EditOp =
   | { kind: "unset"; name: string; file?: string }
   | { kind: "path-add"; dir: string; position: "front" | "back" }
   | { kind: "path-remove"; dir: string };
+
+/** PATH is changed with path add/remove only. Windows variable names ignore case, so there Path is PATH too. */
+export const isPathName = (name: string, windows: boolean) => (windows ? name.toUpperCase() : name) === "PATH";
 
 export interface Plan {
   changes: FileChange[];
@@ -114,8 +117,11 @@ export interface Check {
   message: string;
 }
 
-/** Compare the ops against a fresh trace taken after writing. */
-export function verify(ops: EditOp[], trace: Trace, loc: Locations): Check[] {
+/**
+ * Compare the ops against a fresh trace taken after writing. `fresh` names what was traced, e.g.
+ * "a fresh bash login shell" when the user's login shell is another one.
+ */
+export function verify(ops: EditOp[], trace: Trace, loc: Locations, fresh = "a fresh login shell"): Check[] {
   const later = (name: string) => {
     const c = chain(trace, name);
     const ours = c.findLastIndex((a) => fromEnvhound(a, loc));
@@ -125,30 +131,31 @@ export function verify(ops: EditOp[], trace: Trace, loc: Locations): Check[] {
   return ops.map((op): Check => {
     switch (op.kind) {
       case "set": {
-        if (trace.final[op.name] === op.value) return { ok: true, message: `a fresh login shell now gets ${op.name}` };
+        if (trace.final[op.name] === op.value) return { ok: true, message: `${fresh} now gets ${op.name}` };
         const l = later(op.name);
-        return { ok: false, message: `a fresh login shell does not get ${op.name}${l.length ? `: ${l.join(", ")} sets it again after envhound` : ""}` };
+        return { ok: false, message: `${fresh} does not get ${op.name}${l.length ? `: ${l.join(", ")} sets it again after envhound` : ""}` };
       }
       case "unset":
-        if (trace.final[op.name] === undefined) return { ok: true, message: `${op.name} is no longer set in a fresh login shell` };
-        return { ok: false, message: `${op.name} is still set in a fresh login shell (envhound blame ${op.name} shows where)` };
+        if (trace.final[op.name] === undefined) return { ok: true, message: `${op.name} is no longer set in ${fresh}` };
+        return { ok: false, message: `${op.name} is still set in ${fresh} (envhound blame ${op.name} shows where)` };
       case "path-add":
         return path.includes(op.dir)
-          ? { ok: true, message: `${op.dir} is now in PATH for fresh login shells` }
-          : { ok: false, message: `${op.dir} is not in PATH of a fresh login shell (envhound blame PATH shows why)` };
+          ? { ok: true, message: `${op.dir} is now in PATH for ${fresh}` }
+          : { ok: false, message: `${op.dir} is not in PATH of ${fresh} (envhound blame PATH shows why)` };
       case "path-remove":
         return path.includes(op.dir)
           ? { ok: false, message: `${op.dir} is still in PATH (envhound path shows who adds it)` }
-          : { ok: true, message: `${op.dir} is no longer in PATH for fresh login shells` };
+          : { ok: true, message: `${op.dir} is no longer in PATH for ${fresh}` };
     }
   });
 }
 
-/** Commands that make the same change in the current shell, which envhound cannot reach. */
-export function currentShellCommands(ops: EditOp[]): string[] {
+/** Commands that make the same change in the current shell, which envhound cannot reach. Secret values are left out unless `showSecrets`. */
+export function currentShellCommands(ops: EditOp[], showSecrets = false): string[] {
   return ops.flatMap((op) => {
     switch (op.kind) {
       case "set":
+        if (!showSecrets && isSecret(op.name)) return [`# export ${op.name}=…  (value hidden; --show-secrets prints this command)`];
         return [`export ${op.name}=${shellQuote(op.value)}`];
       case "unset":
         return [`unset ${op.name}`];

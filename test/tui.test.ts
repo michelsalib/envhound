@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { editorCommand } from "../src/tui/terminal.ts";
+import { cmdArg, editorCommand, windowsCommand } from "../src/tui/terminal.ts";
 import { dotenvViews, handleKey, initialState, pathViews, varViews, type Data, type Key, type State } from "../src/tui/state.ts";
 import { render } from "../src/tui/view.ts";
 
@@ -258,3 +258,17 @@ test.skipIf(spawnSync("script", ["--version"]).status !== 0)("envhound edit FILE
   expect(readFileSync(join(home, ".config", "envhound", "env.sh"), "utf8")).toContain("export MIXED=v");
   expect(r.stdout).toContain("✓ a fresh login shell now gets MIXED");
 }, 30_000);
+
+test("cmdArg: quoted for the program, ^-escaped for cmd.exe", () => {
+  expect(cmdArg("C:\\a b\\.env")).toBe('^"C:\\a^ b\\.env^"');
+  expect(cmdArg("C:\\x (86)\\%PATH%&y")).toBe('^"C:\\x^ ^(86^)\\^%PATH^%^&y^"');
+  expect(cmdArg("dir\\")).toBe('^"dir\\\\^"');
+});
+
+test("windowsCommand: programs start directly, scripts through cmd.exe with every part escaped", () => {
+  expect(windowsCommand("C:\\Windows\\notepad.exe", ["C:\\a b\\.env"])).toEqual(["C:\\Windows\\notepad.exe", ["C:\\a b\\.env"], {}]);
+  const [file, args, opts] = windowsCommand("C:\\Program Files\\VS Code\\bin\\code.cmd", ["--wait", "-g", "C:\\p\\.env:7"]);
+  expect(file).toMatch(/cmd\.exe$/i);
+  expect(args).toEqual(["/d", "/s", "/c", '"C:\\Program^ Files\\VS^ Code\\bin\\code.cmd ^"--wait^" ^"-g^" ^"C:\\p\\.env:7^""']);
+  expect(opts).toEqual({ windowsVerbatimArguments: true });
+});

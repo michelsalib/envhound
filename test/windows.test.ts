@@ -134,6 +134,22 @@ describe("planWindows", () => {
     const after = windowsTrace({ ...reg, user: [...reg.user, { name: "NEW", kind: "String", value: "1" }] }, env);
     expect(verifyWindows([{ kind: "set", name: "NEW", value: "1" }, { kind: "unset", name: "EDITOR" }], after).map((c) => c.ok)).toEqual([true, false]);
   });
+  test("a reference makes the value ExpandString, even where the stored one is a plain String", () => {
+    const plain = { ...reg, user: reg.user.map((v) => (v.name === "Path" ? { ...v, kind: "String" as const, value: "C:\\tools" } : v)) };
+    const p = planWindows([{ kind: "path-add", dir: "C:\\Users\\u\\go\\bin", position: "front" }], plain.user, windowsTrace(plain, env));
+    expect(p.changes[0]?.registry).toEqual([{ name: "Path", kind: "ExpandString", value: "%USERPROFILE%\\go\\bin;C:\\tools" }]);
+    expect(plan({ kind: "set", name: "TMPBASE", value: "%USERPROFILE%\\x" }).changes[0]?.registry).toEqual([
+      { name: "TMPBASE", kind: "ExpandString", value: "%USERPROFILE%\\x" },
+    ]);
+    // a plain String stays one when nothing in it needs expanding
+    expect(plan({ kind: "path-add", dir: "D:\\bin", position: "front" }).changes[0]?.registry?.[0]?.kind).toBe("ExpandString");
+    expect(planWindows([{ kind: "path-add", dir: "D:\\bin", position: "front" }], plain.user, windowsTrace(plain, env)).changes[0]?.registry?.[0]?.kind).toBe("String");
+  });
+  test("PowerShell commands hide secret values unless asked", () => {
+    const ops: EditOp[] = [{ kind: "set", name: "API_TOKEN", value: "s3cret" }];
+    expect(powershellCommands(ops)).toEqual(["# $env:API_TOKEN = …  (value hidden; --show-secrets prints this command)"]);
+    expect(powershellCommands(ops, true)).toEqual(["$env:API_TOKEN = 's3cret'"]);
+  });
   test("PowerShell commands for this terminal", () =>
     expect(powershellCommands([{ kind: "set", name: "A", value: "it's" }, { kind: "path-add", dir: "C:\\x", position: "front" }])).toEqual([
       "$env:A = 'it''s'",
