@@ -1,5 +1,7 @@
 export interface Location {
+  /** A startup file, or on Windows a registry key such as HKCU\\Environment. */
   file: string;
+  /** 0 for a registry key, which has no lines. */
   line: number;
 }
 
@@ -28,7 +30,8 @@ export interface Assignment {
 }
 
 export interface Trace {
-  shell: "bash";
+  /** windows: read from the registry, where names ignore case and PATH is split on ';'. */
+  shell: "bash" | "windows";
   /** Environment the fresh shell was started with. */
   initial: Record<string, string>;
   /** Exported environment of the fresh shell once its startup files are done. */

@@ -7,7 +7,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows: no bash tracing yet, so its tests are skipped there; the rest must pass
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -20,3 +25,4 @@ jobs:
       - run: bun run build
       - run: node dist/envhound.js --version
       - run: shellcheck install.sh
+        if: runner.os == 'Linux'

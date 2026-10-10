@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { complete, completionScript } from "../src/completion.ts";
 
 const env = { PATH: "/bin", PAGER: "less", EDITOR: "vim" };
@@ -14,13 +17,19 @@ describe("complete", () => {
   test("--home value is left to the shell", () => expect(names(["--home", ""])).toEqual([]));
   test("--home value is not a command", () => expect(names(["--home", "blame", ""])).toContain("list"));
   test("nothing after a complete blame", () => expect(names(["blame", "PATH", ""])).toEqual([]));
-  test("shells after completion", () => expect(names(["completion", ""])).toEqual(["bash", "zsh", "fish"]));
+  test("shells after completion", () => expect(names(["completion", ""])).toEqual(["bash", "zsh", "fish", "powershell"]));
+  test("Windows ignores case", () => {
+    const winEnv = { Path: "C:\\x", PATHEXT: ".EXE", EDITOR: "code" };
+    expect(complete(["blame", "pa"], winEnv, { ignoreCase: true })).toEqual(["PATHEXT", "Path"]);
+    expect(complete(["set", ""], winEnv, { ignoreCase: true })).toEqual(["EDITOR=", "PATHEXT="]);
+  });
   test("descriptions are tab-separated", () => expect(complete(["pa"], env)).toEqual([expect.stringMatching(/^path\t\S/)]));
 });
 
 const has = (cmd: string) => spawnSync(cmd, ["--version"]).status === 0;
 
-describe("generated scripts parse", () => {
+// on Windows, `bash` may be the WSL launcher
+describe.skipIf(process.platform === "win32")("generated scripts parse", () => {
   test("bash", () => expect(spawnSync("bash", ["-n"], { input: completionScript("bash") }).status).toBe(0));
   test.skipIf(!has("zsh"))("zsh", () => expect(spawnSync("zsh", ["-n"], { input: completionScript("zsh") }).status).toBe(0));
   test.skipIf(!has("fish"))("fish", () => expect(spawnSync("fish", ["-n"], { input: completionScript("fish") }).status).toBe(0));
@@ -36,4 +45,23 @@ describe("generated scripts parse", () => {
     expect(r.stdout.split("\n")).toContain("PAGER");
     expect(r.stdout).not.toContain("\t");
   });
+});
+
+// a stub envhound.cmd on PATH, then PowerShell's own completion engine
+test.skipIf(process.platform !== "win32")("powershell completion end to end", () => {
+  const dir = mkdtempSync(join(tmpdir(), "envhound-"));
+  writeFileSync(join(dir, "envhound.cmd"), `@bun "${join(process.cwd(), "src", "cli.ts")}" %*\r\n`);
+  const script = `
+    ${completionScript("powershell")}
+    foreach ($line in 'envhound blame PA', 'envhound bl', 'envhound --json ') {
+      (TabExpansion2 $line $line.Length).CompletionMatches.CompletionText -join ','
+    }`;
+  const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], {
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}`, PAGER: "less" },
+  });
+  const [blame, commands, afterFlag] = r.stdout.trim().split(/\r?\n/);
+  expect(blame?.split(",")).toContain("PAGER");
+  expect(commands).toBe("blame");
+  expect(afterFlag?.split(",")).toContain("list");
 });

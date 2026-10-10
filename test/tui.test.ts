@@ -113,7 +113,8 @@ describe("variables tab", () => {
   });
 });
 
-describe("PATH tab", () => {
+// POSIX paths; on Windows, edit doesn't reach the PATH tab yet
+describe.skipIf(process.platform === "win32")("PATH tab", () => {
   test("add front / end, refuse duplicates, d drops a staged add", () => {
     let [s] = press(initialState(data()), { name: "tab" }, { ch: "a" }, ...type("~/tools"), { name: "return" });
     expect(s.ops).toEqual([{ kind: "path-add", dir: "/home/u/tools", position: "front" }]);
@@ -211,6 +212,8 @@ test("editorCommand", () => {
   expect(editorCommand("vim", at)).toEqual(["vim", ["+7", "/f"]]);
   expect(editorCommand("code --wait", at)).toEqual(["code", ["--wait", "-g", "/f:7"]]);
   expect(editorCommand("/usr/bin/nano -w", at)).toEqual(["/usr/bin/nano", ["-w", "+7", "/f"]]);
+  expect(editorCommand('"C:\\Program Files\\VS Code\\bin\\code.cmd" --wait', at)).toEqual(["C:\\Program Files\\VS Code\\bin\\code.cmd", ["--wait", "-g", "/f:7"]]);
+  expect(editorCommand("notepad", at)).toEqual(["notepad", ["/f"]]);
 });
 
 test.skipIf(spawnSync("script", ["--version"]).status !== 0)("envhound edit in a real terminal: stage, write, verify", () => {

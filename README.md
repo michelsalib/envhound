@@ -4,7 +4,7 @@
 
 <h1 align="center">envhound</h1>
 
-<p align="center">Find which startup file sets each environment variable, audit your <code>PATH</code>, and change them safely.</p>
+<p align="center">Find which startup file (or, on Windows, which registry key) sets each environment variable, audit your <code>PATH</code>, and change them safely.</p>
 
 ```
 $ envhound blame PATH
@@ -21,7 +21,7 @@ pathprepend() is defined in ~/.profile
 
 ## Install
 
-envhound is a single JavaScript file that runs on Node ≥ 20 or Bun.
+envhound is a single JavaScript file that runs on Node ≥ 20 or Bun, on Linux, macOS and Windows.
 
 ```sh
 npx envhound blame PATH        # or: bunx envhound blame PATH, nothing to install
@@ -29,30 +29,41 @@ npm install -g envhound        # or: bun add -g envhound
 curl -fsSL https://github.com/michelsalib/envhound/releases/latest/download/install.sh | sh
 ```
 
+On Windows, in PowerShell:
+
+```powershell
+irm https://github.com/michelsalib/envhound/releases/latest/download/install.ps1 | iex
+```
+
 `install.sh` puts `envhound` in `~/.local/bin` (`ENVHOUND_INSTALL_DIR` to change it, `ENVHOUND_VERSION=0.2.0` to pin
 a version), checks it against the release's `SHA256SUMS`, and runs it on Node, or on Bun when there is no
 Node ≥ 20. It also installs bash completion where bash-completion loads it, and fish completion when fish
 is installed; it never edits your startup files, so for zsh it prints the line to add.
 
+`install.ps1` does the same on Windows: it puts `envhound.mjs` and an `envhound.cmd` launcher in
+`%LOCALAPPDATA%\Programs\envhound` (same `ENVHOUND_INSTALL_DIR` and `ENVHOUND_VERSION`), checks it against
+`SHA256SUMS`, and prints the line for PowerShell completion and, if needed, the `envhound path add` command
+that puts it in your `Path`. It never edits your profile or your `Path` itself.
+
 **Updates.** Once a week envhound asks the npm registry, in the background, whether a newer version exists,
 and when there is one says so after a command, at most once a week, with the update command for how you
-installed it: `envhound upgrade` for `install.sh`, `npm install -g envhound@latest`, `npx envhound@latest`, and so on.
+installed it: `envhound upgrade` for `install.sh` and `install.ps1`, `npm install -g envhound@latest`, `npx envhound@latest`, and so on.
 It stays quiet in scripts, CI, with `--json` or `--home`, and with `ENVHOUND_NO_UPDATE_CHECK=1`.
 
 ## Commands
 
 | Command | What it shows |
 |---|---|
-| `envhound` / `envhound list` | every exported variable, with the startup `file:line` that sets it |
-| `envhound blame VAR` | every startup `file:line` that assigns `VAR`, in order; for `PATH`, what each step added or removed |
+| `envhound` / `envhound list` | every exported variable, with the startup `file:line` (on Windows, the registry key) that sets it |
+| `envhound blame VAR` | every startup `file:line` (on Windows, registry key) that assigns `VAR`, in order; for `PATH`, what each step added or removed |
 | `envhound path` | the current `PATH` one entry per line, who added each entry, missing directories and duplicates |
 | `envhound dotenv [FILE…]` | for each key of a `.env` file (default `./.env`): its value (with `$VAR`, `${VAR}` and `${VAR:-default}` expanded from your shell, then from the lines above), and whether it is new, same as your shell, or in conflict (with the startup line behind the shell's value); plus syntax problems and duplicates, and warnings for expansion. Exits 1 on problems, not on warnings |
 | `envhound set NAME=value…` | set variables for future login shells (see below) |
 | `envhound unset NAME…` | remove variables `envhound set` added |
 | `envhound path add DIR [--append]` / `envhound path remove DIR` | put a directory in `PATH` (front by default), or take it out |
-| `envhound upgrade` | update an `install.sh` install; for others, prints the update command |
+| `envhound upgrade` | update an `install.sh` or `install.ps1` install; for others, prints the update command |
 | `envhound edit [FILE…]` | interactive editor for variables, `PATH` and `.env` files (see below) |
-| `envhound completion bash\|zsh\|fish` | a shell completion script (commands, flags, live variable names) |
+| `envhound completion bash\|zsh\|fish\|powershell` | a shell completion script (commands, flags, live variable names) |
 
 Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, … are masked by default), `--home DIR`,
 and for changes `--file FILE`, `--yes`, `--dry-run`, `--append`.
@@ -94,6 +105,35 @@ This shell is unchanged. To apply it here too, run:
 - A program can't change the shell that started it, so envhound prints the commands to apply the change in
   the current shell.
 
+On Windows, `set`, `unset` and `path add/remove` change **your user variables** (`HKCU\Environment`, the
+"User variables" of Windows' Environment Variables dialog), which need no administrator:
+
+```
+PS> envhound path add C:\Users\me\go\bin
+HKCU\Environment
+  OneDrive=C:\Users\me\OneDrive
+  Path=
++     %USERPROFILE%\go\bin
+      %USERPROFILE%\.local\bin
+
+Write these changes? [y/N] y
+wrote HKCU\Environment
+backups in ~\AppData\Local\envhound\backups
+✓ C:\Users\me\go\bin is now in PATH for new terminals
+
+This terminal is unchanged. To apply it here too, run in PowerShell:
+  $env:Path = 'C:\Users\me\go\bin;' + $env:Path
+```
+
+- The diff shows each `Path` entry on its own line. Directories under your profile are stored as
+  `%USERPROFILE%\…`, and values with a `%VAR%` reference are stored so that Windows expands them.
+- Before writing, envhound saves the key as a `.reg` file in `%LOCALAPPDATA%\envhound\backups`
+  (double-click it to restore), then tells running programs that the environment changed, so new
+  terminals get the new values.
+- The machine's variables (`HKLM\…\Environment`, "System variables") need an administrator, so envhound
+  leaves them and says so. Your `Path` comes after the machine's, so `path add` puts a directory first among
+  yours, not before the machine's.
+
 ## Interactive editor
 
 `envhound edit [FILE…]` opens a full-screen editor with tabs for **Variables**, **PATH** and each `.env` file:
@@ -121,6 +161,10 @@ plus syntax problems and duplicates. Edits there go through the same diff and co
 that key's line, as `envhound set --file` does. One session can stage both: on <kbd>w</kbd>, shell variables go
 to envhound's file and `.env` keys to their file.
 
+On Windows, the editor shows where each variable comes from in the registry; your user variables and your
+`Path` entries can be changed, the machine's cannot. <kbd>o</kbd> opens `.env` files in `$VISUAL`/`$EDITOR`,
+or VS Code when it is installed, or Notepad.
+
 ## Shell completion
 
 `install.sh` sets up bash and fish completion for you. Otherwise:
@@ -129,6 +173,12 @@ to envhound's file and `.env` keys to their file.
 eval "$(envhound completion bash)"                                # in ~/.bashrc
 eval "$(envhound completion zsh)"                                 # in ~/.zshrc, after compinit
 envhound completion fish > ~/.config/fish/completions/envhound.fish
+```
+
+In PowerShell, add this line to your profile (`notepad $PROFILE`):
+
+```powershell
+envhound completion powershell | Out-String | Invoke-Expression
 ```
 
 Completion is dynamic: on each <kbd>Tab</kbd> the script asks `envhound` for candidates, so `envhound blame <Tab>`
@@ -145,9 +195,17 @@ program or wait for input stop the trace (envhound gives up after 15 seconds).
 
 Values labelled `(inherited)` come from whatever launched your shell (terminal, WSL, IDE), not from startup files.
 
+**On Windows**, there are no startup files: a new terminal gets its variables from the registry. envhound
+reads the machine's variables (`HKLM\…\Environment`), the logon session's (`HKCU\Volatile Environment`) and
+yours (`HKCU\Environment`) through PowerShell, and replays how Windows combines them: yours win, your `Path`
+is appended to the machine's, and `%VAR%` references are expanded. Values labelled `(windows)` are set by
+Windows itself (`SystemRoot`, `USERPROFILE`, …). Changes made by a PowerShell profile only show up as a
+difference between this terminal and a new one.
+
 ## Status
 
-bash only for now. Planned: zsh and fish, and a `.deb`.
+bash, and on Windows the registry. In WSL, envhound works as on Linux. Planned: zsh and fish, PowerShell
+profiles, and a `.deb`.
 
 ## Development
 
@@ -155,6 +213,7 @@ bash only for now. Planned: zsh and fish, and a `.deb`.
 bun install
 bun run dev -- blame PATH   # run from source
 bun test                    # unit tests + real bash on test/fixtures/home + built CLI on node
+                            # (on Windows: the registry, install.ps1 and PowerShell completion instead of bash)
 bun run typecheck
 bun run build               # dist/envhound.js, plain JS for node >= 20
 ```
@@ -169,5 +228,5 @@ git push --follow-tags
 ```
 
 The tag starts [`.github/workflows/release.yml`](.github/workflows/release.yml): tests, then `npm publish`
-with provenance, then a GitHub release with `envhound.js`, `install.sh` and `SHA256SUMS`. npm needs either
+with provenance, then a GitHub release with `envhound.js`, `install.sh`, `install.ps1` and `SHA256SUMS`. npm needs either
 an `NPM_TOKEN` repository secret or trusted publishing configured for this workflow on npmjs.com.

@@ -54,6 +54,8 @@ export interface DotenvData {
 
 export interface Data {
   home: string;
+  /** values come from the registry: what can change is the user's variables (HKCU\Environment) */
+  windows?: boolean;
   vars: VarRow[];
   path: PathRow[];
   dotenv: DotenvData[];
@@ -239,7 +241,7 @@ function submitPrompt(s: State): State {
       const file = p.for.file;
       if (!(file ? DOTENV_NAME : SHELL_NAME).test(name))
         return { ...s, message: { text: `'${name}' is not a valid ${file ? "key" : "variable name"}`, error: true } };
-      if (name === "PATH" && !file) return { ...closed, message: { text: "use the PATH tab to change PATH", error: true } };
+      if ((s.data.windows ? name.toUpperCase() : name) === "PATH" && !file) return { ...closed, message: { text: "use the PATH tab to change PATH", error: true } };
       const existing = file
         ? s.data.dotenv.find((d) => d.file === file)?.rows.find((r) => r.key === name)?.value
         : s.data.vars.find((r) => r.name === name)?.value;
@@ -296,8 +298,10 @@ function pairKey(s: State, key: Key, row: Pair | undefined, file: string | undef
     return [{ ...s, prompt: { for: { kind: "edit", name: row.name, file }, label: `${row.name}=`, value: row.value, secret: isSecret(row.name) } }];
   if (key.ch === "d") return [remove()];
   if (key.ch === "o") {
-    if (!row.source)
-      return [{ ...s, message: { text: file ? "not in the file yet: write first" : "not set by a startup file, nothing to open", error: true } }];
+    if (!row.source) {
+      const text = file ? "not in the file yet: write first" : s.data.windows ? "set in the registry, not in a file: nothing to open" : "not set by a startup file, nothing to open";
+      return [{ ...s, message: { text, error: true } }];
+    }
     return [s, { kind: "open", at: row.source }];
   }
   return [s];
@@ -312,8 +316,8 @@ function varKey(s: State, key: Key): [State, Effect?] {
     // d on a staged change drops it, except on envhound's own variables where it stages the removal
     if (r.pending === "new" || r.pending === "unset" || (r.pending === "set" && !r.managed))
       return unstage(s, op, `change to ${r.name} dropped`);
-    if (r.managed) return stage(s, op, `${r.name} will be removed from envhound's file`);
-    return { ...s, message: { text: notOurs(r.name, r), error: true } };
+    if (r.managed) return stage(s, op, `${r.name} will be removed from ${s.data.windows ? "your variables" : "envhound's file"}`);
+    return { ...s, message: { text: notOurs(s, r.name, r), error: true } };
   });
 }
 
@@ -339,18 +343,24 @@ function pathKey(s: State, key: Key): [State, Effect?] {
     const op: EditOp = { kind: "path-remove", dir: row.dir };
     if (row.pending) return [unstage(s, op, `change to ${short(s, row.dir)} dropped`)];
     if (row.managed) return [stage(s, op, `${short(s, row.dir)} will be removed`)];
-    return [{ ...s, message: { text: notOurs(short(s, row.dir), row), error: true } }];
+    return [{ ...s, message: { text: notOurs(s, short(s, row.dir), row), error: true } }];
   }
   if (key.ch === "o") {
-    if (!row.source) return [{ ...s, message: { text: "not added by a startup file, nothing to open", error: true } }];
+    if (!row.source) {
+      const text = s.data.windows ? "added in the registry, not in a file: nothing to open" : "not added by a startup file, nothing to open";
+      return [{ ...s, message: { text, error: true } }];
+    }
     return [s, { kind: "open", at: row.source }];
   }
   return [s];
 }
 
-function notOurs(what: string, row: { by: string; source?: Location }): string {
+function notOurs(s: State, what: string, row: { by: string; source?: Location }): string {
   if (row.source) return `${what} comes from ${row.by}, not envhound: press o to open that line`;
-  return `${what} ${row.by === "(inherited)" ? "comes from the program that started this shell" : "is set by login or bash itself"}`;
+  if (row.by === "(inherited)") return `${what} comes from the program that started this shell`;
+  if (s.data.windows && row.by.startsWith("HKLM"))
+    return `${what} comes from ${row.by}, for every user: changing it needs an administrator`;
+  return `${what} is set by ${s.data.windows ? "Windows" : "login or bash"} itself`;
 }
 
 export function handleKey(state: State, key: Key): [State, Effect?] {

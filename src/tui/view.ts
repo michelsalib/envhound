@@ -201,12 +201,16 @@ function varDetail(s: State): string {
   const r = varViews(s)[cursorOf(s)];
   if (!r) return "";
   const from = r.managed
-    ? "set by envhound"
-    : r.source
+    ? s.data.windows
+      ? "one of your variables"
+      : "set by envhound"
+    : r.source || r.by.startsWith("HK")
       ? `set at ${r.by}`
       : r.by === "(inherited)"
         ? "inherited from the program that started this shell"
-        : "set by login or bash";
+        : s.data.windows
+          ? "set by Windows"
+          : "set by login or bash";
   return `${r.name}: ${from}${r.pending ? `, staged: ${r.pending}` : ""}`;
 }
 
@@ -233,8 +237,10 @@ function pathDetail(s: State): string {
   const r = pathViews(s)[cursorOf(s)];
   if (!r) return "";
   const from = r.managed
-    ? "added by envhound"
-    : r.source
+    ? s.data.windows
+      ? "in your Path"
+      : "added by envhound"
+    : r.source || r.by.startsWith("HK")
       ? `added at ${r.by}`
       : r.by === "(initial)"
         ? "in the initial PATH bash starts with"

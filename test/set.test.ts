@@ -16,7 +16,7 @@ describe("quoting round-trips", () => {
     expect(words(shellQuote(v))).toEqual([v]);
     expect(shellQuote(v)).not.toContain("\n");
   });
-  test.each(TRICKY)("real bash agrees: %j", (v) => {
+  test.skipIf(process.platform === "win32").each(TRICKY)("real bash agrees: %j", (v) => {
     const r = spawnSync("bash", ["-c", `printf %s ${shellQuote(v)}`], { encoding: "utf8" });
     expect(r.stdout).toBe(v);
   });
@@ -69,6 +69,9 @@ describe(".env edits", () => {
 test("lineDiff: removals before additions", () =>
   expect(lineDiff(["a", "b", "c"], ["a", "x", "c"]).map((d) => d.op + d.text)).toEqual([" a", "-b", "+x", " c"]));
 
+// shell changes need bash; .env changes work everywhere
+const bashTest = test.skipIf(process.platform === "win32");
+
 describe("envhound set / unset / path end to end", () => {
   const root = join(import.meta.dir, "..");
   const fixture = join(import.meta.dir, "fixtures", "home");
@@ -81,7 +84,7 @@ describe("envhound set / unset / path end to end", () => {
   const envhound = (home: string, ...args: string[]) =>
     spawnSync("bun", ["src/cli.ts", "--home", home, ...args], { cwd: root, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
 
-  test("set writes the managed file and the hook once, and a fresh shell sees it", () => {
+  bashTest("set writes the managed file and the hook once, and a fresh shell sees it", () => {
     const home = freshHome();
     const r = envhound(home, "set", "EDITOR=code", "MSG=it's here", "--yes");
     expect(r.status).toBe(0);
@@ -95,7 +98,7 @@ describe("envhound set / unset / path end to end", () => {
     expect(spawnSync("ls", [join(home, ".local", "state", "envhound", "backups")], { encoding: "utf8" }).stdout).toContain("env.sh");
   });
 
-  test("a later assignment is reported, with exit 1", () => {
+  bashTest("a later assignment is reported, with exit 1", () => {
     const home = freshHome();
     // something after the hook overrides envhound
     envhound(home, "set", "LATE=envhound", "--yes");
@@ -105,7 +108,7 @@ describe("envhound set / unset / path end to end", () => {
     expect(r.stdout).toMatch(/does not get LATE: ~\/\.bash_profile:\d+ sets it again after envhound/);
   });
 
-  test("path add / remove", () => {
+  bashTest("path add / remove", () => {
     const home = freshHome();
     const dir = join(home, "tools");
     mkdirSync(dir);
@@ -114,7 +117,7 @@ describe("envhound set / unset / path end to end", () => {
     expect(envhound(home, "path", "remove", dir, "--yes").stdout).toContain("is no longer in PATH");
   });
 
-  test("refuses to write without a terminal unless --yes; --dry-run writes nothing", () => {
+  bashTest("refuses to write without a terminal unless --yes; --dry-run writes nothing", () => {
     const home = freshHome();
     expect(envhound(home, "set", "A=1").status).toBe(1);
     expect(envhound(home, "set", "A=1", "--dry-run").stdout).toContain("+ export A=1");

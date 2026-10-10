@@ -9,6 +9,15 @@ export interface RenderOptions {
   /** Terminal width; undefined means never truncate (output is piped). */
   width?: number;
   showSecrets: boolean;
+  /** Where values come from: bash startup files (the default) or the Windows registry. */
+  shell?: "bash" | "windows";
+}
+
+/** Wording that depends on where values come from. */
+function words(o: RenderOptions) {
+  return o.shell === "windows"
+    ? { fresh: "a new terminal", gets: "a new terminal gets", system: "(windows)", bySystem: "set by Windows itself", sources: "the registry" }
+    : { fresh: "a fresh login shell", gets: "a fresh login shell ends with", system: "(login/shell)", bySystem: "set by login or bash itself", sources: "any startup file" };
 }
 
 const SECRET = /TOKEN|SECRET|PASSW(OR)?D|API_?KEY|PRIVATE_?KEY|CREDENTIAL|_KEY$|^KEY$/i;
@@ -26,7 +35,7 @@ export function paint(o: RenderOptions) {
 export function tilde(s: string, home: string): string {
   if (!home || home === "/") return s;
   const esc = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return s.replace(new RegExp(`(^|[:=\\s])${esc}(?=/|:|$|\\s)`, "g"), "$1~");
+  return s.replace(new RegExp(`(^|[:=\\s])${esc}(?=[/\\\\]|:|$|\\s)`, "g"), "$1~");
 }
 
 /** One-line form of a value: control characters made visible. */
@@ -41,7 +50,7 @@ function fitStart(s: string, width: number): string {
   return s.length > width ? "…" + s.slice(s.length - width + 1) : s;
 }
 
-export const loc = (l: Location, home: string) => `${tilde(l.file, home)}:${l.line}`;
+export const loc = (l: Location, home: string) => (l.line ? `${tilde(l.file, home)}:${l.line}` : l.file);
 
 /** Where to look for an assignment, e.g. `~/.bashrc:12` or `~/.bashrc:12 add_path()`. */
 export function where(a: Assignment, home: string): string {
@@ -66,7 +75,7 @@ function table(rows: string[][], widths: number[], styles: ((s: string) => strin
 export function renderList(rows: EnvRow[], o: RenderOptions): string {
   const c = paint(o);
   const setBy = (r: EnvRow) => {
-    if (r.kind === "shell") return "(login/shell)";
+    if (r.kind === "shell") return words(o).system;
     if (r.kind === "inherited") return "(inherited)";
     const notes = [r.count > 1 ? `×${r.count}` : "", r.status === "not-effective" ? "not effective" : ""].filter(Boolean);
     return where(r.last!, o.home) + (notes.length ? ` (${notes.join(", ")})` : "");
@@ -84,7 +93,7 @@ export function renderList(rows: EnvRow[], o: RenderOptions): string {
   });
   // without color the cyan marking is invisible, so only explain it when it shows
   if (o.color && rows.some((r) => r.differsFromFresh))
-    body.push("", c.dim("values in ") + c.cyan("cyan") + c.dim(" differ from what a fresh login shell gets"));
+    body.push("", c.dim("values in ") + c.cyan("cyan") + c.dim(` differ from what ${words(o).fresh} gets`));
   return [header, ...body].join("\n");
 }
 
@@ -99,8 +108,8 @@ export function renderBlame(r: BlameReport, o: RenderOptions): string {
   const v = (s: string | undefined) => tilde(oneLine(shown(r.name, s, o) ?? "<unset>"), o.home);
   if (!r.assignments.length) {
     if (r.current === undefined) return `${r.name} is not set anywhere.`;
-    const by = r.fresh !== undefined ? "set by login or bash itself" : "inherited from whatever launched this shell";
-    return `${r.name} is not set by any startup file (${by}).\nCurrent value: ${v(r.current)}`;
+    const by = r.fresh !== undefined ? words(o).bySystem : "inherited from whatever launched this shell";
+    return `${r.name} is not set by ${words(o).sources} (${by}).\nCurrent value: ${v(r.current)}`;
   }
 
   let rows: string[][];
@@ -127,10 +136,10 @@ export function renderBlame(r: BlameReport, o: RenderOptions): string {
   lines.push("");
   switch (r.status) {
     case "effective":
-      lines.push(c.green("✓ a fresh login shell ends with this value"));
+      lines.push(c.green(`✓ ${words(o).gets} this value`));
       break;
     case "unset":
-      lines.push(c.green("✓ a fresh login shell ends with this variable unset"));
+      lines.push(c.green(`✓ ${words(o).gets} this variable unset`));
       break;
     case "not-exported":
       lines.push(c.yellow(`! set as a shell variable but never exported: programs started from the shell don't see it`));
@@ -138,7 +147,7 @@ export function renderBlame(r: BlameReport, o: RenderOptions): string {
     case "not-effective":
       lines.push(
         c.yellow(
-          `! not effective: a fresh shell ends with ${r.name}=${v(r.fresh)}\n` +
+          `! not effective: ${o.shell === "windows" ? words(o).gets : "a fresh shell ends with"} ${r.name}=${v(r.fresh)}\n` +
             `  so the last line above is a one-command prefix (${r.name}=x cmd), or something envhound can't trace undid it`,
         ),
       );
@@ -147,16 +156,16 @@ export function renderBlame(r: BlameReport, o: RenderOptions): string {
   if (r.current === undefined && r.fresh !== undefined)
     lines.push(c.cyan("~ not set in this shell: it started before this was added, or something unset it"));
   else if (r.current !== r.fresh && r.current !== undefined)
-    lines.push(c.cyan(`~ this shell has a different value: ${r.pathSteps ? pathDiff(r.fresh, r.current, o.home) : v(r.current)}`));
+    lines.push(c.cyan(`~ this shell has a different value: ${r.pathSteps ? pathDiff(r.fresh, r.current, r.pathSeparator ?? ":", o.home) : v(r.current)}`));
   return lines.join("\n");
 }
 
 const unique = (xs: string[]) => [...new Set(xs)];
 
 /** Summary of how this shell's PATH differs from a fresh one; the full value is usually too long to read. */
-function pathDiff(fresh: string | undefined, current: string | undefined, home: string): string {
-  const f = new Set((fresh ?? "").split(":"));
-  const cur = new Set((current ?? "").split(":"));
+function pathDiff(fresh: string | undefined, current: string | undefined, sep: string, home: string): string {
+  const f = new Set((fresh ?? "").split(sep));
+  const cur = new Set((current ?? "").split(sep));
   const extra = [...cur].filter((d) => !f.has(d));
   const lost = [...f].filter((d) => !cur.has(d));
   const list = (ds: string[]) => (ds.length > 3 ? `${ds.slice(0, 3).map((d) => tilde(d, home)).join(", ")}, …` : ds.map((d) => tilde(d, home)).join(", "));
