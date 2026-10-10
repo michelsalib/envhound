@@ -9,6 +9,9 @@
 # Like install.sh, it never edits your profile or your Path: it prints what to run.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+# Plain .NET for downloads and hashes: started from PowerShell 7, Windows PowerShell can
+# inherit a PSModulePath that hides its own Get-FileHash and Invoke-WebRequest.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 function Fail($message) {
   [Console]::Error.WriteLine("envhound install: $message")
@@ -32,7 +35,13 @@ if (-not $runtime) { Fail 'envhound needs Node >= 20 or Bun. Install one (https:
 
 function Download($url, $file) {
   if ($url -like 'file:*') { Copy-Item -LiteralPath ([Uri]$url).LocalPath -Destination $file }
-  else { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $file }
+  else { (New-Object Net.WebClient).DownloadFile($url, $file) }
+}
+
+function Sha256($file) {
+  $sha = [Security.Cryptography.SHA256]::Create()
+  $stream = [IO.File]::OpenRead($file)
+  try { -join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) } finally { $stream.Dispose() }
 }
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("envhound-" + [Guid]::NewGuid())
@@ -40,12 +49,13 @@ New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
   try { Download "$base/envhound.js" "$tmp\envhound.mjs" } catch { Fail "could not download $base/envhound.js" }
   try { Download "$base/SHA256SUMS" "$tmp\SHA256SUMS" } catch { Fail "could not download $base/SHA256SUMS" }
-  $expected = Get-Content "$tmp\SHA256SUMS" | ForEach-Object {
-    $sum, $name = $_ -split '\s+', 2
-    if ($name -eq 'envhound.js' -or $name -eq '*envhound.js') { $sum }
-  } | Select-Object -First 1
+  $expected = $null
+  foreach ($line in [IO.File]::ReadAllLines("$tmp\SHA256SUMS")) {
+    $sum, $name = $line -split '\s+', 2
+    if (-not $expected -and ($name -eq 'envhound.js' -or $name -eq '*envhound.js')) { $expected = $sum }
+  }
   if (-not $expected) { Fail 'SHA256SUMS has no entry for envhound.js' }
-  if ((Get-FileHash -Algorithm SHA256 "$tmp\envhound.mjs").Hash -ne $expected) { Fail 'checksum mismatch for envhound.js; nothing was installed' }
+  if ((Sha256 "$tmp\envhound.mjs") -ne $expected) { Fail 'checksum mismatch for envhound.js; nothing was installed' }
 
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   # copy next to the target, then rename: a running envhound is never left half-written
