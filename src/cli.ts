@@ -24,9 +24,9 @@ import {
   type RenderOptions,
 } from "./format.ts";
 import { banner } from "./logo.ts";
-import { locations } from "./managed.ts";
+import { locations, loginFile, loginShell } from "./managed.ts";
 import type { Trace } from "./model.ts";
-import { currentShellCommands, planDotenv, planShell, verify, type EditOp } from "./set.ts";
+import { currentShellCommands, isPathName, planDotenv, planShell, verify, type EditOp } from "./set.ts";
 import { traceBash } from "./trace/bash.ts";
 import { powershellEnv, readRegistry, traceWindows, windowsTrace } from "./trace/windows.ts";
 import { planWindows, powershellCommands, verifyWindows } from "./set-windows.ts";
@@ -106,6 +106,11 @@ let notice: string | undefined;
 /** On Windows, variables come from the registry instead of bash startup files. */
 const WINDOWS = process.platform === "win32";
 
+/** envhound replays bash; another login shell (zsh, the default on macOS) may not get what bash gets. */
+const OTHER_SHELL = !WINDOWS && loginShell(process.env) !== undefined && loginShell(process.env) !== "bash" ? loginShell(process.env) : undefined;
+const otherShellNote = () =>
+  `your login shell is ${OTHER_SHELL}, and envhound only reads bash startup files so far: this shows what a bash login shell gets`;
+
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DOTENV_NAME = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
@@ -181,6 +186,8 @@ async function main(argv: string[]): Promise<number> {
   };
   const print = (render: () => string, data: () => unknown) =>
     console.log(values.json ? JSON.stringify(data(), null, 2) : render());
+  // on stderr, so --json output stays clean
+  if (OTHER_SHELL && ["list", "blame"].includes(command)) console.error(paint(opts).yellow(`note: ${otherShellNote()}`) + "\n");
 
   switch (command) {
     case "list": {
@@ -208,6 +215,7 @@ async function main(argv: string[]): Promise<number> {
         return edit(ops, values, opts);
       }
       if (sub !== undefined) return usage(`unknown path command '${sub}' (add, remove)`);
+      if (OTHER_SHELL) console.error(paint(opts).yellow(`note: ${otherShellNote()}`) + "\n");
       const entries = pathEntries(trace(), process.env.PATH ?? "");
       print(() => renderPath(entries, opts), () => entries);
       return 0;
@@ -222,7 +230,8 @@ async function main(argv: string[]): Promise<number> {
         const name = command === "set" ? arg.slice(0, eq) : arg;
         if (command === "set" && eq < 0) return usage(`expected NAME=value, got '${arg}'`);
         if (!valid.test(name)) return usage(`'${name}' is not a valid variable name`);
-        if (name === "PATH" && !values.file) return usage("use 'envhound path add DIR' to change PATH");
+        if (isPathName(name, WINDOWS) && !values.file)
+          return usage(`use 'envhound path ${command === "set" ? "add" : "remove"} DIR' to change ${name}`);
         const file = values.file && resolve(values.file);
         ops.push(command === "set" ? { kind: "set", name, value: arg.slice(eq + 1), file } : { kind: "unset", name, file });
       }
@@ -291,6 +300,11 @@ async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise
     ...files.map((f) => planDotenv(ops.filter((op) => "file" in op && op.file === f), f, process.env)),
   ];
   const plan = { changes: plans.flatMap((p) => p.changes), notes: plans.flatMap((p) => p.notes) };
+  if (OTHER_SHELL && shellOps.length)
+    plan.notes.unshift(
+      `your login shell is ${OTHER_SHELL}, but envhound only writes for bash so far (loaded from ${tilde(loginFile(loc.home), opts.home)}): ` +
+        `${OTHER_SHELL} won't see these changes unless its startup files load that file`,
+    );
 
   for (const note of plan.notes) console.log(c.yellow(`note: ${note}`));
   if (!plan.changes.length) {
@@ -316,9 +330,10 @@ async function edit(ops: EditOp[], values: Values, opts: RenderOptions): Promise
   if (backups.length) console.log(c.dim(`backups in ${tilde(loc.backups, opts.home)}`));
   if (!shellOps.length) return 0;
 
-  const checks = WINDOWS ? verifyWindows(shellOps, traceWindows()) : verify(shellOps, traceBash({ home: values.home }), loc);
+  const fresh = OTHER_SHELL ? "a fresh bash login shell" : undefined;
+  const checks = WINDOWS ? verifyWindows(shellOps, traceWindows()) : verify(shellOps, traceBash({ home: values.home }), loc, fresh);
   for (const check of checks) console.log(check.ok ? c.green(`✓ ${check.message}`) : c.yellow(`! ${check.message}`));
-  const commands = WINDOWS ? powershellCommands(shellOps) : currentShellCommands(shellOps);
+  const commands = WINDOWS ? powershellCommands(shellOps, opts.showSecrets) : currentShellCommands(shellOps, opts.showSecrets);
   const how = WINDOWS ? "This terminal is unchanged. To apply it here too, run in PowerShell:" : "This shell is unchanged. To apply it here too, run:";
   if (commands.length) console.log(c.dim(`\n${how}\n`) + commands.map((x) => `  ${x}`).join("\n"));
   return checks.every((x) => x.ok) ? 0 : 1;

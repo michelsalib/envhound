@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lineDiff } from "../src/diff.ts";
+import { applyChanges } from "../src/edit.ts";
 import { parseDotenv, serializeDotenv, setKey, unsetKey } from "../src/dotenv.ts";
 import { HEADER, addPath, parseManaged, removePath, serializeManaged, setVar, unsetVar } from "../src/managed.ts";
 import { dotenvQuote, shellQuote } from "../src/quote.ts";
+import { currentShellCommands, isPathName } from "../src/set.ts";
 import { words } from "../src/shellwords.ts";
 
 const TRICKY = ["plain", "", "with space", "it's", 'a "b" $c `d`', "tab\there", "multi\nline", "~/not-expanded", "#hash", "café ☕", "back\\slash"];
@@ -127,6 +129,7 @@ describe("envhound set / unset / path end to end", () => {
   test("bad input", () => {
     const home = freshHome();
     expect(envhound(home, "set", "PATH=/x").stderr).toContain("envhound path add");
+    expect(envhound(home, "unset", "PATH").stderr).toContain("envhound path remove");
     expect(envhound(home, "set", "1BAD=x").status).toBe(2);
     expect(envhound(home, "set", "NOEQUALS").status).toBe(2);
   });
@@ -140,5 +143,106 @@ describe("envhound set / unset / path end to end", () => {
     expect(r.stdout).toContain("+ API_TOKEN=********");
     expect(r.stdout).not.toContain("new");
     expect(readFileSync(file, "utf8")).toBe("# app\nAPI_TOKEN=new\nPORT=3000\n");
+  });
+});
+
+describe("applyChanges", () => {
+  const dir = () => mkdtempSync(join(tmpdir(), "envhound-apply-"));
+
+  test("two files with the same name get distinct backups", () => {
+    const d = dir();
+    const [a, b] = [join(d, "a", ".env"), join(d, "b", ".env")];
+    for (const f of [a, b]) {
+      mkdirSync(join(f, ".."));
+      writeFileSync(f, `old ${f}\n`);
+    }
+    const backups = applyChanges(
+      [a, b].map((f) => ({ path: f, before: `old ${f}\n`, after: "new\n" })),
+      join(d, "backups"),
+    );
+    expect(new Set(backups).size).toBe(2);
+    expect(backups.map((x) => readFileSync(x, "utf8")).sort()).toEqual([`old ${a}\n`, `old ${b}\n`].sort());
+  });
+
+  test.skipIf(process.platform === "win32")("writes through a symlink, keeps the file's mode, leaves no temporary file", () => {
+    const d = dir();
+    const real = join(d, "dotfiles-profile");
+    const link = join(d, ".profile");
+    writeFileSync(real, "a\n");
+    chmodSync(real, 0o640);
+    symlinkSync(real, link);
+    applyChanges([{ path: link, before: "a\n", after: "b\n" }], join(d, "backups"));
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(real, "utf8")).toBe("b\n");
+    expect(statSync(real).mode & 0o777).toBe(0o640);
+    expect(readdirSync(d).sort()).toEqual([".profile", "backups", "dotfiles-profile"]);
+  });
+
+  test("refuses to write anything when a file changed meanwhile", () => {
+    const d = dir();
+    const [a, b] = [join(d, "a"), join(d, "b")];
+    writeFileSync(a, "a\n");
+    writeFileSync(b, "changed\n");
+    expect(() =>
+      applyChanges(
+        [
+          { path: a, before: "a\n", after: "A\n" },
+          { path: b, before: "b\n", after: "B\n" },
+        ],
+        join(d, "backups"),
+      ),
+    ).toThrow("changed while envhound was running");
+    expect(readFileSync(a, "utf8")).toBe("a\n");
+  });
+});
+
+test("commands for the current shell hide secret values unless asked", () => {
+  const ops = [{ kind: "set" as const, name: "API_TOKEN", value: "s3cret" }, { kind: "set" as const, name: "EDITOR", value: "vim" }];
+  expect(currentShellCommands(ops)).toEqual(["# export API_TOKEN=…  (value hidden; --show-secrets prints this command)", "export EDITOR=vim"]);
+  expect(currentShellCommands(ops, true)[0]).toBe("export API_TOKEN=s3cret");
+});
+
+test("PATH is guarded by name, ignoring case only on Windows", () => {
+  expect(isPathName("PATH", false)).toBe(true);
+  expect(isPathName("Path", false)).toBe(false);
+  expect(isPathName("Path", true)).toBe(true);
+  expect(isPathName("path", true)).toBe(true);
+});
+
+describe.skipIf(process.platform === "win32")("login shell and trace environment", () => {
+  const root = join(import.meta.dir, "..");
+  const fixture = join(import.meta.dir, "fixtures", "home");
+  const run = (env: Record<string, string>, ...args: string[]) => {
+    const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
+    for (const f of [".bash_profile", ".bashrc"]) copyFileSync(join(fixture, f), join(home, f));
+    return spawnSync("bun", ["src/cli.ts", "--home", home, ...args], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, XDG_CONFIG_HOME: "/nonexistent", XDG_STATE_HOME: "/nonexistent", ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  };
+
+  test("with zsh as login shell, set says bash is what it writes for and checks", () => {
+    const r = run({ SHELL: "/bin/zsh" }, "set", "EDITOR=vim", "--yes");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("note: your login shell is zsh, but envhound only writes for bash so far");
+    expect(r.stdout).toContain("✓ a fresh bash login shell now gets EDITOR");
+  });
+
+  test("with zsh as login shell, list warns on stderr and keeps --json clean", () => {
+    const r = run({ SHELL: "/bin/zsh" }, "list", "--json");
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain("your login shell is zsh");
+    expect(() => JSON.parse(r.stdout)).not.toThrow();
+  });
+
+  test("bash says nothing about the login shell", () => expect(run({ SHELL: "/bin/bash" }, "list").stderr).not.toContain("login shell"));
+
+  test("a quote in TMPDIR doesn't break the trace", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "it's-"));
+    const r = run({ TMPDIR: tmp }, "blame", "EDITOR");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(".bash_profile:1");
   });
 });

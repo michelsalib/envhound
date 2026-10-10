@@ -1,7 +1,7 @@
 // The shell file envhound owns (~/.config/envhound/env.sh) and the hook that loads it.
 // Lines envhound does not recognise are kept verbatim, so hand edits survive.
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { shellQuote } from "./quote.ts";
 import { words } from "./shellwords.ts";
 
@@ -40,6 +40,9 @@ export const HOOK = `
 `;
 
 export const hasHook = (text: string) => text.includes("envhound/env.sh");
+
+/** The user's login shell from $SHELL ("bash", "zsh", "fish"…), or undefined when $SHELL is unset. */
+export const loginShell = (env: Record<string, string | undefined>) => (env.SHELL ? basename(env.SHELL) : undefined);
 
 /** The file bash reads for login shells: the first that exists, as bash does. */
 export function loginFile(home: string): string {

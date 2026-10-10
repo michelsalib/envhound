@@ -13,9 +13,9 @@ $ProgressPreference = 'SilentlyContinue'
 # inherit a PSModulePath that hides its own Get-FileHash and Invoke-WebRequest.
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
+# throw, never exit: run through `irm | iex`, exit would close the user's PowerShell window
 function Fail($message) {
-  [Console]::Error.WriteLine("envhound install: $message")
-  exit 1
+  throw "envhound install: $message"
 }
 
 $repo = 'michelsalib/envhound'
