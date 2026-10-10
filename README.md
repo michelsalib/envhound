@@ -204,8 +204,10 @@ difference between this terminal and a new one.
 
 ## Status
 
-bash, and on Windows the registry. In WSL, envhound works as on Linux. Planned: zsh and fish, PowerShell
-profiles, and a `.deb`.
+- **Linux and macOS**: bash startup files.
+- **Windows**: the registry, in PowerShell or cmd. In WSL, envhound reads bash startup files, as on Linux.
+
+Planned: zsh and fish, PowerShell profiles, and a `.deb`.
 
 ## Development
 
