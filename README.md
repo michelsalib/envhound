@@ -6,6 +6,27 @@
 
 <p align="center">Find which startup file (or, on Windows, which registry key) sets each environment variable, audit your <code>PATH</code>, and change them safely.</p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/envhound"><img src="https://img.shields.io/npm/v/envhound?color=a8521a" alt="npm version"></a>
+  <a href="https://github.com/michelsalib/envhound/actions/workflows/ci.yml"><img src="https://github.com/michelsalib/envhound/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/node/v/envhound" alt="Node version">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue" alt="Linux, macOS and Windows">
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/envhound" alt="MIT license"></a>
+</p>
+
+Why is `~/.local/bin` in your `PATH` twice? Which of your dotfiles sets `EDITOR`, and why does a new terminal
+not pick up the value you just changed? envhound answers those in one command, by replaying how your shell
+starts (or, on Windows, how the registry is read) and pointing at the exact line or key behind every value.
+When you want to change something, it shows a diff, backs up, writes, and checks the result.
+
+**Try it, nothing to install:**
+
+```sh
+npx envhound blame PATH    # who put each directory in PATH
+npx envhound               # every variable, and where it is set
+npx envhound edit          # browse and change them in your terminal
+```
+
 ```
 $ envhound blame PATH
 (initial)                          +/usr/local/sbin  +/usr/local/bin  +/usr/sbin  +/usr/bin  +/sbin  +/bin
