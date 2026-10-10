@@ -28,7 +28,7 @@ import { locations } from "./managed.ts";
 import type { Trace } from "./model.ts";
 import { currentShellCommands, planDotenv, planShell, verify, type EditOp } from "./set.ts";
 import { traceBash } from "./trace/bash.ts";
-import { readRegistry, traceWindows, windowsTrace } from "./trace/windows.ts";
+import { powershellEnv, readRegistry, traceWindows, windowsTrace } from "./trace/windows.ts";
 import { planWindows, powershellCommands, verifyWindows } from "./set-windows.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
@@ -352,7 +352,7 @@ async function upgrade(): Promise<number> {
   try {
     writeFileSync(join(dir, "install.ps1"), installer);
     const args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", join(dir, "install.ps1")];
-    return spawnSync("powershell.exe", args, { stdio: "inherit", env }).status ?? 1;
+    return spawnSync("powershell.exe", args, { stdio: "inherit", env: powershellEnv(env) }).status ?? 1;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

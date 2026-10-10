@@ -105,10 +105,20 @@ foreach ($k in @(@('machine', 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Sessio
 ConvertTo-Json -InputObject $out -Compress -Depth 4
 `;
 
+/**
+ * The environment for Windows PowerShell: without PSModulePath, which PowerShell 7 sets
+ * to its own modules, hiding Windows PowerShell's from a powershell.exe started from it.
+ */
+export function powershellEnv(env: Record<string, string | undefined> = {}): Record<string, string | undefined> {
+  const out = { ...process.env, ...env };
+  for (const k of Object.keys(out)) if (k.toUpperCase() === "PSMODULEPATH") delete out[k];
+  return out;
+}
+
 /** Run a PowerShell script, passing `env` to it, and return its stdout. */
 export function powershell(script: string, env: Record<string, string> = {}): string {
   const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], {
-    env: { ...process.env, ...env },
+    env: powershellEnv(env),
     encoding: "utf8",
     windowsHide: true,
     timeout: 30_000,
