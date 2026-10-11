@@ -1,16 +1,7 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
-import {
-	existsSync,
-	mkdtempSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
 import { blame, envRows, pathEntries } from "./analyze.ts";
@@ -57,18 +48,16 @@ import {
 	verifyWindows,
 } from "./set-windows.ts";
 import { traceBash } from "./trace/bash.ts";
-import {
-	powershellEnv,
-	readRegistry,
-	traceWindows,
-	windowsTrace,
-} from "./trace/windows.ts";
+import { readRegistry, traceWindows, windowsTrace } from "./trace/windows.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import {
 	fetchLatest,
-	installerUrl,
 	installKind,
+	latestRelease,
+	newer,
+	type Release,
+	replaceScript,
 	updateNotice,
 	upgradeCommand,
 } from "./update.ts";
@@ -107,8 +96,9 @@ const HELP = `Usage:
                          powershell, e.g. eval "$(envhound completion bash)" in
                          ~/.bashrc, or in your PowerShell $PROFILE:
                          envhound completion powershell | Out-String | Invoke-Expression
-  envhound upgrade       update envhound (installed with install.sh; otherwise
-                         shows the command for npm, bun, npx or bunx)
+  envhound upgrade       update envhound (installed with install.sh or install.ps1;
+                         otherwise shows the command for npm, bun, npx or bunx);
+                         the download must match SHA256SUMS and the npm package
 
 Options:
   --json              machine-readable output (list, blame, path, dotenv)
@@ -499,7 +489,10 @@ async function edit(
 	return checks.every((x) => x.ok) ? 0 : 1;
 }
 
-/** Re-runs install.sh (install.ps1 on Windows) into the same directory; other installs get their own command. */
+/**
+ * Replaces this copy with the latest release, checked against SHA256SUMS and against npm's copy
+ * (see latestRelease). Nothing downloaded is ever run. Other installs get their own command.
+ */
 async function upgrade(): Promise<number> {
 	const script = realpathSync(process.argv[1]!);
 	const kind = installKind(script);
@@ -509,52 +502,24 @@ async function upgrade(): Promise<number> {
 		);
 		return 0;
 	}
-	const url = installerUrl(process.env, WINDOWS);
-	let installer: string;
+	let release: Release;
 	try {
-		if (url.startsWith("file:"))
-			installer = readFileSync(fileURLToPath(url), "utf8");
-		else {
-			const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			installer = await res.text();
-		}
+		release = await latestRelease(process.env);
 	} catch (e) {
 		console.error(
-			`envhound: could not download ${url}: ${e instanceof Error ? e.message : e}`,
+			`envhound: ${e instanceof Error ? e.message : e}; nothing was changed`,
 		);
 		return 1;
 	}
-	const env = { ...process.env, ENVHOUND_INSTALL_DIR: dirname(script) };
-	if (!WINDOWS)
-		return (
-			spawnSync("sh", ["-s"], {
-				input: installer,
-				stdio: ["pipe", "inherit", "inherit"],
-				env,
-			}).status ?? 1
-		);
-	// PowerShell runs a script file, so the installer goes to a temporary one
-	const dir = mkdtempSync(join(tmpdir(), "envhound-"));
-	try {
-		writeFileSync(join(dir, "install.ps1"), installer);
-		const args = [
-			"-NoProfile",
-			"-NonInteractive",
-			"-ExecutionPolicy",
-			"Bypass",
-			"-File",
-			join(dir, "install.ps1"),
-		];
-		return (
-			spawnSync("powershell.exe", args, {
-				stdio: "inherit",
-				env: powershellEnv(env),
-			}).status ?? 1
-		);
-	} finally {
-		rmSync(dir, { recursive: true, force: true });
+	if (!newer(release.version, pkg.version)) {
+		console.log(`envhound ${pkg.version} is the latest version`);
+		return 0;
 	}
+	replaceScript(script, release.script);
+	console.log(
+		`upgraded envhound ${pkg.version} to ${release.version} in ${dirname(script)}`,
+	);
+	return 0;
 }
 
 function usage(message: string): number {

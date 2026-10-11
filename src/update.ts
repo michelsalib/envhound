@@ -1,17 +1,22 @@
 // Weekly update check. The registry is asked at most once a week, by a detached
 // background process, so no command waits on the network; a later run prints the notice.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	mkdirSync,
 	readFileSync,
 	realpathSync,
 	renameSync,
+	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 
 export const REPO = "michelsalib/envhound";
-const REGISTRY = "https://registry.npmjs.org/envhound/latest";
+const REGISTRY = "https://registry.npmjs.org/envhound";
 export const WEEK = 7 * 24 * 3600 * 1000;
 
 /** How this copy of envhound was installed, which decides how to update it. */
@@ -133,7 +138,7 @@ export function updateNotice(
 
 /** The hidden `__update-check` command, run in the background by updateNotice. */
 export async function fetchLatest(stateFile: string): Promise<void> {
-	const res = await fetch(REGISTRY, {
+	const res = await fetch(`${REGISTRY}/latest`, {
 		signal: AbortSignal.timeout(10_000),
 		headers: { accept: "application/json" },
 	});
@@ -147,10 +152,123 @@ export async function fetchLatest(stateFile: string): Promise<void> {
 	});
 }
 
-/** Where release files are downloaded from; ENVHOUND_BASE_URL overrides it (mirrors, tests). */
-export function installerUrl(
+/** Downloads only over https (or from a local file: for mirrors and tests): never plain http. */
+export async function download(url: string): Promise<Buffer> {
+	if (url.startsWith("file:")) return readFileSync(fileURLToPath(url));
+	if (!url.startsWith("https://"))
+		throw new Error(`refusing to download ${url}: only https is allowed`);
+	const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+	if (!res.ok) throw new Error(`could not download ${url}: HTTP ${res.status}`);
+	return Buffer.from(await res.arrayBuffer());
+}
+
+const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+/** The hash SHA256SUMS lists for `name`, as sha256sum prints it. */
+export function sumFor(sums: string, name: string): string | undefined {
+	for (const line of sums.split(/\r?\n/)) {
+		const [sum, file] = line.trim().split(/\s+/, 2);
+		if (file === name || file === `*${name}`) return sum?.toLowerCase();
+	}
+	return undefined;
+}
+
+/** One file's content from a .tgz such as an npm package; only plain ustar entries, which npm writes. */
+export function tarFile(tgz: Buffer, path: string): Buffer | undefined {
+	const tar = gunzipSync(tgz);
+	const text = (at: number, len: number) =>
+		tar.toString("utf8", at, at + len).replace(/\0.*$/s, "");
+	for (let at = 0; at + 512 <= tar.length; ) {
+		const name = text(at, 100);
+		if (!name) return undefined; // the zero blocks at the end
+		const prefix = text(at + 345, 155);
+		const size = Number.parseInt(text(at + 124, 12).trim() || "0", 8);
+		const type = text(at + 156, 1);
+		const full = prefix ? `${prefix}/${name}` : name;
+		if (full === path && (type === "0" || type === ""))
+			return tar.subarray(at + 512, at + 512 + size);
+		at += 512 + Math.ceil(size / 512) * 512;
+	}
+	return undefined;
+}
+
+export interface Release {
+	version: string;
+	/** dist/envhound.js, the same bytes on GitHub and on npm */
+	script: Buffer;
+}
+
+/**
+ * The latest envhound, checked twice: against the release's SHA256SUMS, and against the copy npm
+ * published, which must be byte for byte the same. Replacing it means compromising both GitHub
+ * and npm. ENVHOUND_REGISTRY and ENVHOUND_BASE_URL point elsewhere (mirrors, tests).
+ */
+export async function latestRelease(
 	env: Record<string, string | undefined>,
-	windows = false,
-): string {
-	return `${env.ENVHOUND_BASE_URL ?? `https://github.com/${REPO}/releases/latest/download`}/${windows ? "install.ps1" : "install.sh"}`;
+): Promise<Release> {
+	const registry = env.ENVHOUND_REGISTRY ?? REGISTRY;
+	const meta = JSON.parse(
+		(await download(`${registry}/latest`)).toString(),
+	) as {
+		version?: unknown;
+		dist?: { tarball?: unknown; integrity?: unknown };
+	};
+	const { version } = meta;
+	const tarball = meta.dist?.tarball;
+	const integrity = meta.dist?.integrity;
+	if (
+		typeof version !== "string" ||
+		!/^\d+\.\d+\.\d+$/.test(version) ||
+		typeof tarball !== "string" ||
+		typeof integrity !== "string"
+	)
+		throw new Error(`unexpected answer from ${registry}/latest`);
+
+	const base =
+		env.ENVHOUND_BASE_URL ??
+		`https://github.com/${REPO}/releases/download/v${version}`;
+	const script = await download(`${base}/envhound.js`);
+	const expected = sumFor(
+		(await download(`${base}/SHA256SUMS`)).toString(),
+		"envhound.js",
+	);
+	if (!expected) throw new Error("SHA256SUMS has no entry for envhound.js");
+	if (sha256(script) !== expected)
+		throw new Error("checksum mismatch for envhound.js");
+
+	const tgz = await download(tarball);
+	const [algorithm, digest] = integrity.split("-", 2);
+	if (
+		algorithm !== "sha512" ||
+		createHash("sha512").update(tgz).digest("base64") !== digest
+	)
+		throw new Error(
+			`the npm package for ${version} doesn't match its integrity`,
+		);
+	const published = tarFile(tgz, "package/dist/envhound.js");
+	if (!published?.equals(script))
+		throw new Error(
+			`envhound.js on GitHub is not the one published on npm for ${version}`,
+		);
+	return { version, script };
+}
+
+/**
+ * Put the new script in place of `target`: written beside it, then renamed over it, so a running
+ * envhound is never half-written. install.sh rewrites the first line for Bun; that choice is kept.
+ */
+export function replaceScript(target: string, script: Buffer): void {
+	const bun = readFileSync(target, "utf8").startsWith("#!/usr/bin/env bun");
+	const content = bun
+		? Buffer.from(
+				script.toString("utf8").replace(/^#!.*/, "#!/usr/bin/env bun"),
+			)
+		: script;
+	const tmp = join(dirname(target), `.${basename(target)}.new`);
+	rmSync(tmp, { force: true });
+	writeFileSync(tmp, content, {
+		mode: statSync(target).mode & 0o7777,
+		flag: "wx",
+	});
+	renameSync(tmp, target);
 }

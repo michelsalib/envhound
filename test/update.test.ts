@@ -4,26 +4,168 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+	chmodSync,
 	copyFileSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { gzipSync } from "node:zlib";
 import pkg from "../package.json" with { type: "json" };
 import {
 	decide,
+	download,
 	installKind,
+	latestRelease,
 	newer,
 	readState,
+	replaceScript,
+	sumFor,
+	tarFile,
 	updateNotice,
 	upgradeCommand,
 	WEEK,
 } from "../src/update.ts";
+
+const sha = (
+	algorithm: string,
+	b: Buffer | string,
+	encoding: "hex" | "base64" = "hex",
+) => createHash(algorithm).update(b).digest(encoding);
+
+/** A gzipped ustar archive, as npm pack writes one. */
+function tgz(files: Record<string, Buffer | string>): Buffer {
+	const blocks: Buffer[] = [];
+	for (const [name, body] of Object.entries(files)) {
+		const data = Buffer.from(body);
+		const h = Buffer.alloc(512);
+		h.write(name, 0);
+		h.write("0000644\0", 100);
+		h.write(`${data.length.toString(8).padStart(11, "0")}\0`, 124);
+		h.write("        ", 148);
+		h.write("0", 156);
+		h.write("ustar\0" + "00", 257);
+		let sum = 0;
+		for (const b of h) sum += b;
+		h.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
+		blocks.push(h, data, Buffer.alloc((512 - (data.length % 512)) % 512));
+	}
+	blocks.push(Buffer.alloc(1024));
+	return gzipSync(Buffer.concat(blocks));
+}
+
+/**
+ * A local release of `script` as `version`: the GitHub files, the npm package and the registry's
+ * answer, all file: URLs. `npm` replaces the script inside the npm package, `sums` SHA256SUMS.
+ */
+function fakeRelease(
+	script: Buffer | string,
+	opts: { version?: string; npm?: string; sums?: string } = {},
+): Record<string, string> {
+	const dir = mkdtempSync(join(tmpdir(), "envhound-release-"));
+	writeFileSync(join(dir, "envhound.js"), script);
+	writeFileSync(
+		join(dir, "SHA256SUMS"),
+		opts.sums ?? `${sha("sha256", script)}  envhound.js\n`,
+	);
+	const pkgTgz = tgz({
+		"package/package.json": "{}",
+		"package/dist/envhound.js": opts.npm ?? script,
+	});
+	writeFileSync(join(dir, "envhound.tgz"), pkgTgz);
+	mkdirSync(join(dir, "registry"));
+	writeFileSync(
+		join(dir, "registry", "latest"),
+		JSON.stringify({
+			version: opts.version ?? "9.9.9",
+			dist: {
+				tarball: pathToFileURL(join(dir, "envhound.tgz")).href,
+				integrity: `sha512-${sha("sha512", pkgTgz, "base64")}`,
+			},
+		}),
+	);
+	return {
+		ENVHOUND_BASE_URL: pathToFileURL(dir).href,
+		ENVHOUND_REGISTRY: pathToFileURL(join(dir, "registry")).href,
+	};
+}
+
+describe("verified upgrades", () => {
+	const script = "#!/usr/bin/env node\nconsole.log('new')\n";
+
+	test("a release that matches SHA256SUMS and npm", async () => {
+		const r = await latestRelease(fakeRelease(script));
+		expect(r.version).toBe("9.9.9");
+		expect(r.script.toString()).toBe(script);
+	});
+	test("refuses a checksum mismatch", () =>
+		expect(
+			latestRelease(
+				fakeRelease(script, { sums: `${"0".repeat(64)}  envhound.js\n` }),
+			),
+		).rejects.toThrow("checksum mismatch"));
+	test("refuses a GitHub file that npm didn't publish", () =>
+		expect(
+			latestRelease(fakeRelease(script, { npm: "console.log('other')\n" })),
+		).rejects.toThrow("not the one published on npm"));
+	test("refuses plain http", () =>
+		expect(
+			latestRelease({ ENVHOUND_REGISTRY: "http://registry.example" }),
+		).rejects.toThrow("only https is allowed"));
+	test("download refuses other schemes", () =>
+		expect(download("ftp://x/y")).rejects.toThrow("only https"));
+	test("SHA256SUMS lines, with or without the binary-mode star", () => {
+		expect(sumFor("AB  envhound.js\ncd  install.sh\n", "envhound.js")).toBe(
+			"ab",
+		);
+		expect(sumFor("ab *envhound.js\r\n", "envhound.js")).toBe("ab");
+		expect(sumFor("ab  other.js\n", "envhound.js")).toBeUndefined();
+	});
+
+	test("tarFile reads what npm pack writes", () => {
+		const dir = mkdtempSync(join(tmpdir(), "envhound-pack-"));
+		mkdirSync(join(dir, "dist"));
+		writeFileSync(join(dir, "dist", "envhound.js"), script);
+		writeFileSync(
+			join(dir, "package.json"),
+			JSON.stringify({ name: "pack-test", version: "1.0.0", files: ["dist"] }),
+		);
+		const r = spawnSync("npm", ["pack", "--silent"], {
+			cwd: dir,
+			encoding: "utf8",
+			shell: process.platform === "win32",
+		});
+		expect(r.status).toBe(0);
+		const packed = readFileSync(join(dir, r.stdout.trim()));
+		expect(tarFile(packed, "package/dist/envhound.js")?.toString()).toBe(
+			script,
+		);
+		expect(tarFile(packed, "package/nope")).toBeUndefined();
+	});
+
+	test.skipIf(process.platform === "win32")(
+		"replaceScript keeps the file's mode and install.sh's choice of Bun",
+		() => {
+			const target = join(
+				mkdtempSync(join(tmpdir(), "envhound-bin-")),
+				"envhound",
+			);
+			writeFileSync(target, "#!/usr/bin/env bun\nold\n");
+			chmodSync(target, 0o755);
+			replaceScript(target, Buffer.from(script));
+			expect(readFileSync(target, "utf8")).toBe(
+				"#!/usr/bin/env bun\nconsole.log('new')\n",
+			);
+			expect(statSync(target).mode & 0o777).toBe(0o755);
+		},
+	);
+});
 
 describe("installKind", () => {
 	const cases: [string, string][] = [
@@ -233,20 +375,36 @@ describe.skipIf(process.platform === "win32")(
 				),
 			).toBe(hasFish);
 
-			// upgrade re-runs install.sh into the same directory
+			// upgrade replaces the file in place, checked against SHA256SUMS and npm
+			const built = readFileSync(join(release, "envhound.js"));
 			writeFileSync(
 				join(dir, "envhound"),
 				readFileSync(join(dir, "envhound"), "utf8").replace(/\n/, "\n// old\n"),
 			);
+			const same = run(join(dir, "envhound"), ["upgrade"], {
+				...fakeRelease(built, { version: pkg.version }),
+				...homeEnv(home),
+			});
+			expect(same.stdout).toContain(
+				`envhound ${pkg.version} is the latest version`,
+			);
 			const u = run(join(dir, "envhound"), ["upgrade"], {
-				ENVHOUND_BASE_URL: base,
+				...fakeRelease(built),
 				...homeEnv(home),
 			});
 			expect(u.status).toBe(0);
-			expect(u.stdout).toContain(`installed envhound ${pkg.version} in ${dir}`);
+			expect(u.stdout).toContain(
+				`upgraded envhound ${pkg.version} to 9.9.9 in ${dir}`,
+			);
 			expect(readFileSync(join(dir, "envhound"), "utf8")).not.toContain(
 				"// old",
 			);
+			const bad = run(join(dir, "envhound"), ["upgrade"], {
+				...fakeRelease(built, { npm: "console.log('evil')\n" }),
+				...homeEnv(home),
+			});
+			expect(bad.status).toBe(1);
+			expect(bad.stderr).toContain("nothing was changed");
 		});
 
 		test("refuses a download that doesn't match SHA256SUMS", () => {
@@ -365,12 +523,18 @@ describe.skipIf(process.platform !== "win32")(
 			const cmd = join(dir, "envhound.cmd");
 			expect(run(cmd, ["--version"]).stdout.trim()).toBe(pkg.version);
 
-			// upgrade re-runs install.ps1 into the same directory
+			// upgrade replaces envhound.mjs in place, checked against SHA256SUMS and npm
 			const mjs = join(dir, "envhound.mjs");
 			writeFileSync(mjs, readFileSync(mjs, "utf8").replace(/\n/, "\n// old\n"));
-			const u = run(cmd, ["upgrade"], { ENVHOUND_BASE_URL: base });
+			const u = run(
+				cmd,
+				["upgrade"],
+				fakeRelease(readFileSync(join(release, "envhound.js"))),
+			);
 			expect(u.status).toBe(0);
-			expect(u.stdout).toContain(`installed envhound ${pkg.version} in ${dir}`);
+			expect(u.stdout).toContain(
+				`upgraded envhound ${pkg.version} to 9.9.9 in ${dir}`,
+			);
 			expect(readFileSync(mjs, "utf8")).not.toContain("// old");
 		});
 

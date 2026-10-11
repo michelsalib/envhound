@@ -73,6 +73,12 @@ and when there is one says so after a command, at most once a week, with the upd
 installed it: `envhound upgrade` for `install.sh` and `install.ps1`, `npm install -g envhound@latest`, `npx envhound@latest`, and so on.
 It stays quiet in scripts, CI, with `--json` or `--home`, and with `ENVHOUND_NO_UPDATE_CHECK=1`.
 
+`envhound upgrade` never runs anything it downloads. It fetches the latest `envhound.js` from the GitHub
+release, checks it against the release's `SHA256SUMS`, and requires it to be byte for byte the file
+published in the npm package of the same version (whose integrity npm vouches for), so a tampered
+release would have to be tampered with on both GitHub and npm. Only then does it replace itself, in one
+rename. Downloads are https only.
+
 ## Commands
 
 | Command | What it shows |
