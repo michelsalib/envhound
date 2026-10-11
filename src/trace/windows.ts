@@ -4,6 +4,9 @@
 // user's Path appended to the machine's. envhound reads those keys and replays
 // that merge as a Trace: one assignment per registry value.
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Assignment, Trace } from "../model.ts";
 
 /** Where each value comes from, as shown to the user; MACHINE is abbreviated. */
@@ -235,24 +238,106 @@ $key.Close()
 if ($env:ENVHOUND_NOTIFY) { [Environment]::SetEnvironmentVariable('ENVHOUND_NOTIFY', $null, $(if ($machine) { 'Machine' } else { 'User' })) }
 `;
 
-export function writeRegistry(
-	writes: RegistryWrite[],
-	opts: {
-		backup?: string;
-		scope?: Scope;
-		/** the subkey written, for tests; by default the scope's Environment key */
-		key?: string;
-		notify?: boolean;
-	} = {},
-): void {
+export interface WriteOptions {
+	backup?: string;
+	scope?: Scope;
+	/** the subkey written, for tests; by default the scope's Environment key */
+	key?: string;
+	notify?: boolean;
+}
+
+function writeEnv(writes: RegistryWrite[], opts: WriteOptions) {
 	const scope = opts.scope ?? "user";
-	powershell(WRITE, {
+	return {
 		ENVHOUND_SCOPE: scope,
 		ENVHOUND_KEY: opts.key ?? (scope === "machine" ? MACHINE_SUBKEY : USER_KEY),
 		ENVHOUND_WRITES: JSON.stringify(writes),
 		ENVHOUND_BACKUP: opts.backup ?? "",
 		ENVHOUND_NOTIFY: opts.notify === false ? "" : "1",
-	});
+	};
+}
+
+export function writeRegistry(
+	writes: RegistryWrite[],
+	opts: WriteOptions = {},
+): void {
+	powershell(WRITE, writeEnv(writes, opts));
+}
+
+const psLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/**
+ * WRITE in an elevated PowerShell, through Windows' administrator prompt (UAC). An elevated
+ * process doesn't inherit this one's environment, so the parameters travel in a file only this
+ * user can read, and an error comes back in another.
+ */
+export function writeRegistryElevated(
+	writes: RegistryWrite[],
+	opts: WriteOptions = {},
+): void {
+	const dir = mkdtempSync(join(tmpdir(), "envhound-"));
+	const params = join(dir, "params.json");
+	const error = join(dir, "error.txt");
+	try {
+		writeFileSync(params, JSON.stringify(writeEnv(writes, opts)), {
+			mode: 0o600,
+		});
+		const elevated = `
+$ErrorActionPreference = 'Stop'
+try {
+  $p = Get-Content -Raw -Encoding UTF8 -LiteralPath ${psLiteral(params)} | ConvertFrom-Json
+  foreach ($n in $p.PSObject.Properties) { Set-Item -LiteralPath ('env:' + $n.Name) -Value ([string]$n.Value) }
+  ${WRITE}
+} catch {
+  Set-Content -Encoding UTF8 -LiteralPath ${psLiteral(error)} -Value $_.Exception.Message
+  exit 1
+}`;
+		const launch = `
+$ErrorActionPreference = 'Stop'
+try {
+  $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $env:ENVHOUND_ELEVATED)
+} catch { exit 3 }
+exit $proc.ExitCode`;
+		const r = spawnSync(
+			"powershell.exe",
+			[
+				"-NoProfile",
+				"-NonInteractive",
+				"-EncodedCommand",
+				Buffer.from(launch, "utf16le").toString("base64"),
+			],
+			{
+				env: powershellEnv({
+					ENVHOUND_ELEVATED: Buffer.from(elevated, "utf16le").toString(
+						"base64",
+					),
+				}),
+				encoding: "utf8",
+				windowsHide: true,
+				// the administrator prompt waits for the user
+				timeout: 10 * 60_000,
+			},
+		);
+		if (r.error)
+			throw new Error(`could not run powershell.exe: ${r.error.message}`);
+		if (r.status === 3)
+			throw new Error(
+				"the administrator prompt was declined, so the machine's variables were not changed",
+			);
+		if (r.status !== 0) {
+			let message = r.stderr.trim();
+			try {
+				message = readFileSync(error, "utf8")
+					.replace(/^\uFEFF/, "")
+					.trim();
+			} catch {}
+			throw new Error(
+				`could not write the machine's variables: ${message || `exit status ${r.status}`}`,
+			);
+		}
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 }
 
 /** True when this process may write the machine's variables: an administrator terminal. */

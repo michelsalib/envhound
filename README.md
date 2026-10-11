@@ -166,24 +166,20 @@ This terminal is unchanged. To apply it here too, run in PowerShell:
   $env:Path = 'C:\Users\me\go\bin;' + $env:Path
 ```
 
-From an administrator terminal, `--machine` changes **the machine's variables** instead
-(`HKLM\…\Environment`, the "System variables" of that dialog), for every user. envhound checks that the
-terminal is elevated before anything else, backs the key up to a `.reg` file, and notes when your own
-variables override the machine's:
-
-```powershell
-envhound path add --machine "C:\Program Files\Tool\bin"
-envhound unset --machine OLD_VARIABLE
-```
+`unset` and `path remove` also remove the value from **the machine's variables** (`HKLM\…\Environment`, the
+"System variables" of that dialog) when it is set there, so new terminals really lose it; in
+`envhound edit`, `d` does the same on a machine row and `e` edits a machine variable's value. Those
+changes apply to every user, so the diff is followed by Windows' administrator prompt (UAC) when the
+terminal isn't already elevated; declining it writes nothing. The machine's key is backed up to a
+`.reg` file first, like yours.
 
 - The diff shows each `Path` entry on its own line. Directories under your profile are stored as
   `%USERPROFILE%\…`, and values with a `%VAR%` reference are stored so that Windows expands them.
 - Before writing, envhound saves the key as a `.reg` file in `%LOCALAPPDATA%\envhound\backups`
   (double-click it to restore), then tells running programs that the environment changed, so new
   terminals get the new values.
-- The machine's variables (`HKLM\…\Environment`, "System variables") need an administrator, so envhound
-  leaves them and says so. Your `Path` comes after the machine's, so `path add` puts a directory first among
-  yours, not before the machine's.
+- `set` and `path add` go to your own variables, which need no administrator. Your `Path` comes after
+  the machine's, so `path add` puts a directory first among yours, not before the machine's.
 
 ## Interactive editor
 
@@ -212,8 +208,8 @@ plus syntax problems and duplicates. Edits there go through the same diff and co
 that key's line, as `envhound set --file` does. One session can stage both: on <kbd>w</kbd>, shell variables go
 to envhound's file and `.env` keys to their file.
 
-On Windows, the editor shows where each variable comes from in the registry; your user variables and your
-`Path` entries can be changed, the machine's cannot. <kbd>o</kbd> opens `.env` files in `$VISUAL`/`$EDITOR`,
+On Windows, the editor shows where each variable comes from in the registry; yours and the machine's can
+be changed, the machine's through Windows' administrator prompt when you write. <kbd>o</kbd> opens `.env` files in `$VISUAL`/`$EDITOR`,
 or VS Code when it is installed, or Notepad.
 
 ## Shell completion

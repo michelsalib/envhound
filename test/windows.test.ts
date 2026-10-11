@@ -10,6 +10,7 @@ import { type RenderOptions, renderBlame, renderList } from "../src/format.ts";
 import { locations } from "../src/managed.ts";
 import type { EditOp } from "../src/set.ts";
 import {
+	planRegistry,
 	planWindows,
 	powershellCommands,
 	verifyWindows,
@@ -26,6 +27,7 @@ import {
 	USER_KEY,
 	windowsTrace,
 	writeRegistry,
+	writeRegistryElevated,
 } from "../src/trace/windows.ts";
 import { loadData } from "../src/tui/load.ts";
 import {
@@ -148,7 +150,7 @@ test.skipIf(process.platform !== "win32")("readRegistry on Windows", () => {
 });
 
 describe("planWindows", () => {
-	const plan = (...ops: EditOp[]) => planWindows(ops, reg.user, t);
+	const plan = (...ops: EditOp[]) => planRegistry(ops, reg, t);
 	test("set: a new value, %VAR% makes it expand, the diff shows NAME=value", () => {
 		const p = plan(
 			{ kind: "set", name: "GOPATH", value: "%USERPROFILE%\\go" },
@@ -168,13 +170,24 @@ describe("planWindows", () => {
 		]);
 		expect(p.notes[0]).toContain(`also set at ${MACHINE}`);
 	});
-	test("unset: only the user's; the machine's needs an administrator", () => {
-		expect(
-			plan({ kind: "unset", name: "editor" }).changes[0]?.registry,
-		).toEqual([{ name: "EDITOR" }]);
+	test("unset removes the variable wherever it is; the machine's asks for administrator rights", () => {
+		expect(plan({ kind: "unset", name: "editor" }).changes).toMatchObject([
+			{ scope: "user", registry: [{ name: "EDITOR" }] },
+		]);
 		const p = plan({ kind: "unset", name: "windir" });
-		expect(p.changes).toEqual([]);
-		expect(p.notes[0]).toContain("--machine from an administrator terminal");
+		expect(p.changes).toMatchObject([
+			{ path: MACHINE, scope: "machine", registry: [{ name: "windir" }] },
+		]);
+		expect(p.notes).toEqual([
+			expect.stringContaining("Windows will ask for administrator rights"),
+		]);
+		// set in both: both go, the machine's first (if the prompt is declined, nothing is written)
+		expect(
+			plan({ kind: "unset", name: "JAVA_HOME" }).changes.map((c) => c.scope),
+		).toEqual(["machine", "user"]);
+		expect(plan({ kind: "unset", name: "NOPE" }).notes).toEqual([
+			"NOPE is not in your variables or the machine's",
+		]);
 	});
 	test("path add: under the profile it is stored as %USERPROFILE%; a present directory moves", () => {
 		const front = plan({
@@ -204,14 +217,28 @@ describe("planWindows", () => {
 			plan({ kind: "path-add", dir: "C:\\TOOLS", position: "back" }).changes,
 		).toHaveLength(1);
 	});
-	test("path remove: matches the expanded entry; the machine's Path is left alone", () => {
+	test("path remove: matches the expanded entry, in your Path and the machine's", () => {
 		expect(
 			plan({ kind: "path-remove", dir: "C:\\Users\\u\\bin" }).changes[0]
 				?.registry?.[0]?.value,
 		).toBe("C:\\tools;%NOPE%\\x");
-		const p = plan({ kind: "path-remove", dir: "C:\\WINDOWS" });
-		expect(p.changes).toEqual([]);
-		expect(p.notes).toEqual([expect.stringContaining("machine's Path")]);
+		// stored as %SystemRoot% in the machine's Path
+		expect(
+			plan({ kind: "path-remove", dir: "C:\\WINDOWS" }).changes,
+		).toMatchObject([
+			{
+				scope: "machine",
+				registry: [
+					{ name: "Path", value: "%SystemRoot%\\system32;C:\\Tools\\" },
+				],
+			},
+		]);
+		// C:\tools is in both
+		expect(
+			plan({ kind: "path-remove", dir: "C:\\tools" }).changes.map(
+				(c) => c.scope,
+			),
+		).toEqual(["machine", "user"]);
 	});
 	test("verify reads the outcome from a new trace", () => {
 		const after = windowsTrace(
@@ -271,35 +298,34 @@ describe("planWindows", () => {
 			).changes[0]?.registry?.[0]?.kind,
 		).toBe("String");
 	});
-	test("--machine: the machine's variables, stored as given, with notes about yours", () => {
-		const m = (...ops: EditOp[]) => planWindows(ops, reg.machine, t, "machine");
-		const java = m({ kind: "set", name: "JAVA_HOME", value: "C:\\Java22" });
-		expect(java.changes[0]).toMatchObject({
-			path: MACHINE,
-			scope: "machine",
-			registry: [{ name: "JAVA_HOME", kind: "String", value: "C:\\Java22" }],
+	test("the machine's own value, edited: set for every user, stored as given", () => {
+		const java = plan({
+			kind: "set",
+			name: "JAVA_HOME",
+			value: "C:\\Java22",
+			machine: true,
 		});
-		expect(java.notes[0]).toContain(`also set in your own variables (${USER})`);
+		expect(java.changes).toMatchObject([
+			{
+				path: MACHINE,
+				scope: "machine",
+				registry: [{ name: "JAVA_HOME", kind: "String", value: "C:\\Java22" }],
+			},
+		]);
+		expect(java.notes).toEqual([
+			expect.stringContaining("Windows will ask for administrator rights"),
+			expect.stringContaining(`also set in your own variables (${USER})`),
+		]);
 		// no %USERPROFILE% in the machine's Path: it would be each user's folder
-		const add = m({
-			kind: "path-add",
-			dir: "C:\\Users\\u\\go\\bin",
-			position: "back",
-		});
+		const add = planWindows(
+			[{ kind: "path-add", dir: "C:\\Users\\u\\go\\bin", position: "back" }],
+			reg.machine,
+			t,
+			"machine",
+		);
 		expect(add.changes[0]?.registry?.[0]?.value).toEndWith(
 			";C:\\Users\\u\\go\\bin",
 		);
-		expect(m({ kind: "unset", name: "windir" }).changes[0]?.registry).toEqual([
-			{ name: "windir" },
-		]);
-		// C:\Tools\ is in both Paths: the machine's loses it, yours keeps it, and the note says so
-		const rm = m({ kind: "path-remove", dir: "C:\\tools" });
-		expect(rm.changes[0]?.registry?.[0]?.value).toBe(
-			"%SystemRoot%\\system32;%SystemRoot%",
-		);
-		expect(rm.notes).toEqual([
-			expect.stringContaining("also in your own Path"),
-		]);
 	});
 	test("removing a duplicate keeps the first copy", () => {
 		// C:\tools is yours and a duplicate of the machine's C:\Tools\, which comes first: yours goes, quietly
@@ -329,10 +355,6 @@ describe("planWindows", () => {
 		);
 		expect(all.changes[0]?.registry?.[0]?.value).toBe("C:\\b");
 	});
-	test("without --machine, the notes say how to change the machine's", () =>
-		expect(plan({ kind: "unset", name: "windir" }).notes[0]).toContain(
-			"--machine from an administrator terminal",
-		));
 	test("PowerShell commands hide secret values unless asked", () => {
 		const ops: EditOp[] = [{ kind: "set", name: "API_TOKEN", value: "s3cret" }];
 		expect(powershellCommands(ops)).toEqual([
@@ -414,6 +436,48 @@ test.skipIf(!admin)(
 	},
 );
 
+// runs through Start-Process -Verb RunAs; on an administrator runner, without a prompt
+test.skipIf(!admin)(
+	"writeRegistryElevated: the same write, in an elevated PowerShell",
+	() => {
+		const machineKey = `SOFTWARE\\envhound-elevated-${process.pid}`;
+		try {
+			writeRegistryElevated(
+				[
+					{
+						name: "E",
+						kind: "ExpandString",
+						value: "%SystemRoot%\\x 'q' \"d\" café",
+					},
+				],
+				{ scope: "machine", key: machineKey, notify: false },
+			);
+			expect(readRegistry(USER_KEY, machineKey).machine).toEqual([
+				{
+					name: "E",
+					kind: "ExpandString",
+					value: "%SystemRoot%\\x 'q' \"d\" café",
+				},
+			]);
+			// an error inside the elevated process comes back
+			expect(() =>
+				writeRegistryElevated(
+					[{ name: "E", kind: "Bogus" as never, value: "1" }],
+					{
+						scope: "machine",
+						key: machineKey,
+						notify: false,
+					},
+				),
+			).toThrow("could not write the machine's variables");
+		} finally {
+			powershell(
+				`Remove-Item -LiteralPath 'HKLM:\\${machineKey}' -Recurse -ErrorAction SilentlyContinue`,
+			);
+		}
+	},
+);
+
 describe("envhound edit on Windows", () => {
 	const loc = locations("C:\\Users\\u", {}, true);
 	const data = loadData(t, env, loc);
@@ -464,13 +528,26 @@ describe("envhound edit on Windows", () => {
 				.map((r) => r.dir),
 		).toEqual(["C:\\tools"]);
 	});
-	test("d unsets the user's; the machine's points to --machine; o has nothing to open", () => {
+	test("d removes yours or the machine's, e edits the machine's own value; o has nothing to open", () => {
 		expect(press(on("EDITOR"), { ch: "d" }).ops).toEqual([
 			{ kind: "unset", name: "EDITOR" },
 		]);
-		expect(press(on("windir"), { ch: "d" }).message?.text).toContain(
-			"envhound --machine, from an administrator terminal",
+		const windir = press(on("windir"), { ch: "d" });
+		expect(windir.ops).toEqual([{ kind: "unset", name: "windir" }]);
+		expect(windir.message?.text).toContain(
+			"for every user (Windows asks for administrator rights)",
 		);
+		// e on a machine-only variable: the machine's value, for every user
+		const edited = press(
+			on("windir"),
+			{ ch: "e" },
+			{ name: "backspace" },
+			{ ch: "X" },
+			{ name: "return" },
+		);
+		expect(edited.ops).toEqual([
+			{ kind: "set", name: "windir", value: "C:\\WINDOWX", machine: true },
+		]);
 		expect(press(on("EDITOR"), { ch: "o" }).message?.text).toContain(
 			"nothing to open",
 		);

@@ -23,7 +23,14 @@ import { shellQuote } from "./quote.ts";
 
 export type EditOp =
 	/** `file`: a .env file to edit instead of the shell */
-	| { kind: "set"; name: string; value: string; file?: string }
+	/** `machine`: Windows, the machine's own value is edited, for every user */
+	| {
+			kind: "set";
+			name: string;
+			value: string;
+			file?: string;
+			machine?: boolean;
+	  }
 	| { kind: "unset"; name: string; file?: string }
 	| { kind: "path-add"; dir: string; position: "front" | "back" }
 	/** `duplicate`: remove only the copies after the first, which stays (the editor's d on a duplicate) */
