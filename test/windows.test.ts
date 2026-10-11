@@ -19,6 +19,7 @@ import {
 	expand,
 	isElevated,
 	MACHINE,
+	MACHINE_KEY,
 	powershell,
 	type Registry,
 	readRegistry,
@@ -38,6 +39,7 @@ import {
 	type State,
 	varViews,
 } from "../src/tui/state.ts";
+import { render } from "../src/tui/view.ts";
 
 const reg: Registry = {
 	machine: [
@@ -527,6 +529,10 @@ describe("envhound edit on Windows", () => {
 				.filter((r) => r.pending === "remove")
 				.map((r) => r.dir),
 		).toEqual(["C:\\tools"]);
+	});
+	test("the detail line names the machine's key in full", () => {
+		const text = render(on("windir"), 200, 30, { color: false }).join("\n");
+		expect(text).toContain(`set at ${MACHINE_KEY}`);
 	});
 	test("d removes yours or the machine's, e edits the machine's own value; o has nothing to open", () => {
 		expect(press(on("EDITOR"), { ch: "d" }).ops).toEqual([

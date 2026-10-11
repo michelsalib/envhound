@@ -8,6 +8,8 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 
 - `envhound edit`: the PATH table cut directories at 60 characters even on a wide screen; the
   column now takes the room the screen has, and cuts a path only when it can't fit.
+- `envhound edit` on Windows: the line under the table names the machine's registry key in full
+  (`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`), not `HKLM\…\Environment`.
 
 ## 0.3.2 (2026-10-11)
 
