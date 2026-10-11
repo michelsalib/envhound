@@ -83,13 +83,18 @@ describe.skipIf(process.platform === "win32")("generated scripts parse", () => {
 	test("bash completion end to end", () => {
 		// load the script with a stub `envhound`, then complete `envhound blame PA`
 		const script = `
-      envhound() { bun ${process.cwd()}/src/cli.ts "$@"; }
+      envhound() { bun "$ENVHOUND_CLI" "$@"; }
       ${completionScript("bash")}
       COMP_WORDS=(envhound blame PA); COMP_CWORD=2; _envhound
       printf '%s\\n' "\${COMPREPLY[@]}"`;
 		const r = spawnSync("bash", ["-c", script], {
 			encoding: "utf8",
-			env: { ...process.env, PAGER: "less" },
+			// the path through the environment: spliced into the script, a space would break it
+			env: {
+				...process.env,
+				PAGER: "less",
+				ENVHOUND_CLI: join(process.cwd(), "src", "cli.ts"),
+			},
 		});
 		expect(r.stdout.split("\n")).toContain("PAGER");
 		expect(r.stdout).not.toContain("\t");

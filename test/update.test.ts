@@ -43,6 +43,12 @@ const sha = (
 	encoding: "hex" | "base64" = "hex",
 ) => createHash(algorithm).update(b).digest(encoding);
 
+/** `text` with `line` inserted after its first line (the shebang stays first). */
+function afterFirstLine(text: string, line: string): string {
+	const [first, ...rest] = text.split("\n");
+	return [first, line, ...rest].join("\n");
+}
+
 /** A gzipped ustar archive, as npm pack writes one. */
 function tgz(files: Record<string, Buffer | string>): Buffer {
 	const blocks: Buffer[] = [];
@@ -445,7 +451,7 @@ describe.skipIf(process.platform === "win32")(
 			const built = readFileSync(join(release, "envhound.js"));
 			writeFileSync(
 				join(dir, "envhound"),
-				readFileSync(join(dir, "envhound"), "utf8").replace(/\n/, "\n// old\n"),
+				afterFirstLine(readFileSync(join(dir, "envhound"), "utf8"), "// old"),
 			);
 			const same = run(join(dir, "envhound"), ["upgrade"], {
 				...fakeRelease(built, { version: pkg.version }),
@@ -628,7 +634,7 @@ describe.skipIf(process.platform !== "win32")(
 
 			// upgrade replaces envhound.mjs in place, checked against SHA256SUMS and npm
 			const mjs = join(dir, "envhound.mjs");
-			writeFileSync(mjs, readFileSync(mjs, "utf8").replace(/\n/, "\n// old\n"));
+			writeFileSync(mjs, afterFirstLine(readFileSync(mjs, "utf8"), "// old"));
 			const u = run(
 				cmd,
 				["upgrade"],
