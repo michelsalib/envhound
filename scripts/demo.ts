@@ -12,36 +12,55 @@ const COLS = 120;
 const ROWS = 24;
 const root = join(import.meta.dir, "..");
 
-/** Each scene: a comment saying what we want to know, then the command. */
-const SCENES: [string, string][] = [
-	["where does my PATH come from?", "envhound blame PATH"],
-	["which python3 runs, and why?", "envhound why python3"],
-	["why isn't EDITOR what I set?", "envhound blame EDITOR"],
-	[
-		"change it, and see what will happen first",
-		"envhound set EDITOR=code --dry-run",
-	],
-];
+/** What to do in an interactive scene: wait for text on screen, pause, type, or press keys. */
+type Step =
+	| ["wait", string]
+	| ["sleep", number]
+	| ["type", string]
+	| ["send", string];
 
-// runs argv in a pseudo-terminal of COLS x ROWS and prints what it wrote
-const PTY = `
-import fcntl, os, pty, struct, sys, termios
-pid, fd = pty.fork()
-if pid == 0:
-    os.execvp(sys.argv[3], sys.argv[3:])
-fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", int(sys.argv[2]), int(sys.argv[1]), 0, 0))
-out = b""
-while True:
-    try:
-        chunk = os.read(fd, 65536)
-    except OSError:
-        break
-    if not chunk:
-        break
-    out += chunk
-os.waitpid(pid, 0)
-sys.stdout.buffer.write(out)
-`;
+/** Each scene: a comment saying what we want to know, the command, and for the editor its keys. */
+const SCENES: { comment: string; command: string; steps?: Step[] }[] = [
+	{ comment: "where does my PATH come from?", command: "envhound blame PATH" },
+	{ comment: "which python3 runs, and why?", command: "envhound why python3" },
+	{ comment: "why isn't EDITOR what I set?", command: "envhound blame EDITOR" },
+	{
+		comment: "change it, and see what will happen first",
+		command: "envhound set EDITOR=code --dry-run",
+	},
+	{
+		comment: "or stage changes in the editor, then review and write them",
+		command: "envhound edit",
+		steps: [
+			["wait", "Variables"],
+			["sleep", 2],
+			["send", "n"],
+			["sleep", 0.6],
+			["type", "VISUAL"],
+			["sleep", 0.4],
+			["send", "\r"],
+			["sleep", 0.5],
+			["type", "code --wait"],
+			["sleep", 0.5],
+			["send", "\r"],
+			["sleep", 1.8],
+			["send", "\t"],
+			["sleep", 1.8],
+			["send", "a"],
+			["sleep", 0.6],
+			["type", "~/bin"],
+			["sleep", 0.5],
+			["send", "\r"],
+			["sleep", 2],
+			["send", "w"],
+			["wait", "[y/N]"],
+			["sleep", 2.5],
+			["send", "y"],
+			["sleep", 0.3],
+			["send", "\r"],
+		],
+	},
+];
 
 function which(cmd: string): string {
 	const found = Bun.which(cmd);
@@ -95,7 +114,18 @@ try {
 	};
 	const PROMPT = "\x1b[1;32m$\x1b[0m ";
 
-	for (const [i, [comment, command]] of SCENES.entries()) {
+	/** Typing as sends with pauses, so the editor sees keys at a human pace. */
+	const keys = (steps: Step[]): [string, string | number][] =>
+		steps.flatMap((step): [string, string | number][] =>
+			step[0] === "type"
+				? [...step[1]].flatMap((ch): [string, string | number][] => [
+						["send", ch],
+						["sleep", 0.035 + random() * 0.06],
+					])
+				: [step],
+		);
+
+	for (const [i, { comment, command, steps = [] }] of SCENES.entries()) {
 		if (i) out("\x1b[2J\x1b[H");
 		out(PROMPT, 0.4);
 		out("\x1b[2m");
@@ -103,16 +133,16 @@ try {
 		out("\x1b[0m\r\n", 0.3);
 		out(PROMPT, 0.3);
 		type(command);
-		out("\r\n", 0.3);
+		out("\r\n");
 		const args = command.split(" ").slice(1);
 		const r = spawnSync(
 			python,
 			[
 				"-I",
-				"-c",
-				PTY,
+				join(root, "scripts", "pty.py"),
 				String(COLS),
 				String(ROWS),
+				JSON.stringify(keys(steps)),
 				node,
 				join(root, "dist", "envhound.js"),
 				...args,
@@ -120,8 +150,12 @@ try {
 			{ env: shell, cwd: home, encoding: "utf8" },
 		);
 		if (r.status !== 0) throw new Error(r.stderr);
-		for (const line of r.stdout.replace(/\r?\n$/, "").split(/\r?\n/))
-			out(`${line}\r\n`, 0.04);
+		const recorded = JSON.parse(r.stdout) as [number, string][];
+		const start = t;
+		for (const [at, text] of recorded) {
+			t = start + at;
+			out(text);
+		}
 		out(PROMPT, 3.5);
 	}
 

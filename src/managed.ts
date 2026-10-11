@@ -83,7 +83,7 @@ const PATH_LINE =
 	/^case ":\$PATH:" in \*":(.*):"\*\) ;; \*\) export PATH="(?:\$PATH:(.*)|(.*):\$PATH)" ;; esac$/;
 
 /** DIR inside double quotes, written relative to $HOME when it can be. */
-function dqDir(dir: string, home: string): string {
+export function dqDir(dir: string, home: string): string {
 	const esc = (s: string) => s.replace(/[\\"$`]/g, "\\$&");
 	return dir === home || dir.startsWith(home + "/")
 		? "$HOME" + esc(dir.slice(home.length))

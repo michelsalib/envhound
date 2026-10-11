@@ -446,3 +446,18 @@ describe.skipIf(process.platform === "win32")("set --stdin", () => {
 		expect(run("x", "unset", "A", "--stdin", "--yes").status).toBe(2);
 	});
 });
+
+test("PATH commands for the current shell use $HOME, and quote the rest", () =>
+	expect(
+		currentShellCommands(
+			[
+				{ kind: "path-add", dir: "/home/u/bin", position: "front" },
+				{ kind: "path-add", dir: "/opt/my $tools", position: "back" },
+			],
+			false,
+			"/home/u",
+		),
+	).toEqual([
+		'export PATH="$HOME/bin:$PATH"',
+		'export PATH="$PATH:/opt/my \\$tools"',
+	]));

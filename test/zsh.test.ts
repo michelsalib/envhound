@@ -285,3 +285,63 @@ describe.skipIf(!canTrace || !zsh)("envhound set with zsh", () => {
 		expect(envhound(fixture, "--shell", "fish", "list").status).toBe(2);
 	});
 });
+
+// The traced shell must not reach the terminal: an interactive zsh takes it over for job control,
+// and envhound is then stopped (SIGTTOU) the moment it asks a question; startup files can also
+// ask questions there themselves, and wait.
+describe.skipIf(!canTrace || !zsh || !Bun.which("python3"))(
+	"zsh at a real terminal",
+	() => {
+		zshTest(
+			"set asks, then writes",
+			() => {
+				const root = join(import.meta.dir, "..");
+				const home = mkdtempSync(join(tmpdir(), "envhound-zhome-"));
+				cpSync(join(import.meta.dir, "fixtures", "zhome"), home, {
+					recursive: true,
+				});
+				// a question on the terminal, as compinit asks about insecure directories
+				writeFileSync(
+					join(home, ".zshrc"),
+					`${readFileSync(join(home, ".zshrc"), "utf8")}read -q 'REPLY?go on? ' || true\n`,
+				);
+				const r = spawnSync(
+					"python3",
+					[
+						"-I",
+						join(root, "scripts", "pty.py"),
+						"100",
+						"30",
+						JSON.stringify([
+							["wait", "[y/N]"],
+							["send", "y\r"],
+						]),
+						process.execPath,
+						join(root, "src", "cli.ts"),
+						"--home",
+						home,
+						"set",
+						"MSG=hi",
+					],
+					{
+						encoding: "utf8",
+						timeout: 60_000,
+						env: {
+							...process.env,
+							SHELL: zsh!,
+							XDG_CONFIG_HOME: "/nonexistent",
+							XDG_STATE_HOME: "/nonexistent",
+						},
+					},
+				);
+				const out = (JSON.parse(r.stdout || "[]") as [number, string][])
+					.map(([, text]) => text)
+					.join("");
+				// the screen too, when the prompt never came
+				expect({ stderr: r.stderr, out }).toMatchObject({ stderr: "" });
+				expect(out).toContain("✓ a fresh login shell now gets MSG");
+			},
+			90_000,
+		);
+	},
+);

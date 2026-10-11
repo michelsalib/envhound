@@ -4,9 +4,19 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 
 ## Unreleased
 
+### Fixed
+
+- With zsh as login shell, `set`, `unset`, `path add|remove` and `edit` stopped (suspended by the
+  terminal) as soon as they asked a question or opened the editor: the traced interactive zsh took
+  the terminal over for job control. Startup files could also ask questions on the terminal while
+  envhound traced them (zsh's compinit about insecure directories), and wait for an answer. The
+  traced shell now runs in a session of its own, without the terminal.
+
 ### Changed
 
 - The note when `~/.zshrc` or `~/.zlogin` sets a variable after envhound's line is shorter.
+- After a change, the checks name directories under your home as `~/…`, and the command to apply a
+  PATH change in the current shell uses `$HOME` (`export PATH="$HOME/bin:$PATH"`).
 
 ## 0.4.0 (2026-10-11)
 

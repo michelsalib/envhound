@@ -39,7 +39,8 @@ export function traceZsh(opts: ZshOptions = {}): Trace {
 	const { initial, final, stderr } = runShell(
 		"zsh",
 		opts.zsh ?? "zsh",
-		["-o", "promptsubst", "-lixc"],
+		// no job control: without a terminal (see runShell), zsh would warn about it in the trace
+		["-o", "promptsubst", "+o", "monitor", "-lixc"],
 		PS4,
 		opts,
 	);
