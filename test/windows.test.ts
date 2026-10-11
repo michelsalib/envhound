@@ -32,6 +32,7 @@ import {
 	handleKey,
 	initialState,
 	type Key,
+	pathViews,
 	type State,
 	varViews,
 } from "../src/tui/state.ts";
@@ -300,6 +301,34 @@ describe("planWindows", () => {
 			expect.stringContaining("also in your own Path"),
 		]);
 	});
+	test("removing a duplicate keeps the first copy", () => {
+		// C:\tools is yours and a duplicate of the machine's C:\Tools\, which comes first: yours goes, quietly
+		const p = plan({ kind: "path-remove", dir: "C:\\tools", duplicate: true });
+		expect(p.changes[0]?.registry?.[0]?.value).toBe(
+			"%USERPROFILE%\\bin;%NOPE%\\x",
+		);
+		expect(p.notes).toEqual([]);
+		// twice in your own Path: the first stays
+		const twice = {
+			...reg,
+			user: reg.user.map((v) =>
+				v.name === "Path" ? { ...v, value: "C:\\a;C:\\b;c:\\A\\" } : v,
+			),
+		};
+		const p2 = planWindows(
+			[{ kind: "path-remove", dir: "C:\\a", duplicate: true }],
+			twice.user,
+			windowsTrace(twice, env),
+		);
+		expect(p2.changes[0]?.registry?.[0]?.value).toBe("C:\\a;C:\\b");
+		// without duplicate, every copy goes
+		const all = planWindows(
+			[{ kind: "path-remove", dir: "C:\\a" }],
+			twice.user,
+			windowsTrace(twice, env),
+		);
+		expect(all.changes[0]?.registry?.[0]?.value).toBe("C:\\b");
+	});
 	test("without --machine, the notes say how to change the machine's", () =>
 		expect(plan({ kind: "unset", name: "windir" }).notes[0]).toContain(
 			"--machine from an administrator terminal",
@@ -415,6 +444,25 @@ describe("envhound edit on Windows", () => {
 		);
 		expect(data.path.find((p) => p.dir === "C:\\WINDOWS")?.managed).toBe(false);
 		expect(at("TMPBASE")).toBeGreaterThan(-1); // in the registry, not in this terminal yet
+	});
+	test("d on a duplicate PATH entry removes that copy only, and marks only its row", () => {
+		const base = initialState(data);
+		const rows = pathViews(base);
+		const i = rows.findIndex((r) => r.dir === "C:\\tools");
+		expect(rows[i]?.duplicateOf).toBeDefined();
+		const after = press(
+			{ ...base, tab: 1, cursor: { ...base.cursor, path: i } },
+			{ ch: "d" },
+		);
+		expect(after.ops).toEqual([
+			{ kind: "path-remove", dir: "C:\\tools", duplicate: true },
+		]);
+		expect(after.message?.text).toContain("the duplicate of");
+		expect(
+			pathViews(after)
+				.filter((r) => r.pending === "remove")
+				.map((r) => r.dir),
+		).toEqual(["C:\\tools"]);
 	});
 	test("d unsets the user's; the machine's points to --machine; o has nothing to open", () => {
 		expect(press(on("EDITOR"), { ch: "d" }).ops).toEqual([

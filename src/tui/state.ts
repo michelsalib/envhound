@@ -192,7 +192,14 @@ export function pathViews(s: State): PathView[] {
 	const rows: PathView[] = s.data.path.map((r) => ({ ...r }));
 	for (const op of s.ops) {
 		if (op.kind === "path-remove") {
-			for (const r of rows) if (r.dir === op.dir) r.pending = "remove";
+			// only the rows that go: envhound's own, and for a duplicate only the later copies
+			for (const r of rows)
+				if (
+					r.dir === op.dir &&
+					r.managed &&
+					(!op.duplicate || r.duplicateOf !== undefined)
+				)
+					r.pending = "remove";
 		} else if (op.kind === "path-add") {
 			const row: PathView = {
 				dir: op.dir,
@@ -505,11 +512,23 @@ function pathKey(s: State, key: Key): [State, Effect?] {
 	const row = pathViews(s)[cursorOf(s)];
 	if (!row) return [s];
 	if (key.ch === "d") {
-		const op: EditOp = { kind: "path-remove", dir: row.dir };
+		// d on a duplicate removes that copy, not the first one
+		const duplicate = row.duplicateOf !== undefined;
+		const op: EditOp = duplicate
+			? { kind: "path-remove", dir: row.dir, duplicate }
+			: { kind: "path-remove", dir: row.dir };
 		if (row.pending)
 			return [unstage(s, op, `change to ${short(s, row.dir)} dropped`)];
 		if (row.managed)
-			return [stage(s, op, `${short(s, row.dir)} will be removed`)];
+			return [
+				stage(
+					s,
+					op,
+					duplicate
+						? `the duplicate of ${short(s, row.dir)} will be removed; entry ${row.duplicateOf} stays`
+						: `${short(s, row.dir)} will be removed`,
+				),
+			];
 		return [
 			{
 				...s,

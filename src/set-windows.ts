@@ -141,17 +141,23 @@ export function planWindows(
 			}
 			case "path-remove": {
 				const dirs = entries();
-				const rest = dirs.filter((d) => expanded(d) !== key(op.dir));
 				// the stored value, not the result: the user's Path result includes the machine's
 				const inOtherPath = chain(trace, "PATH").some(
 					(a) =>
 						a.at.file === other &&
 						splitPath(trace, a.value).some((d) => expanded(d) === key(op.dir)),
 				);
+				// removing a duplicate keeps the first copy: the machine's when there is one (it comes
+				// first in PATH), else the first one here
+				const first = dirs.findIndex((d) => expanded(d) === key(op.dir));
+				const keepFirst = op.duplicate && !(scope === "user" && inOtherPath);
+				const rest = dirs.filter(
+					(d, i) => expanded(d) !== key(op.dir) || (keepFirst && i === first),
+				);
 				if (rest.length !== dirs.length) setPath(rest);
 				else if (!inOtherPath)
 					notes.push(`${op.dir} is not in ${mine} Path (${here})`);
-				if (inOtherPath)
+				if (inOtherPath && !op.duplicate)
 					notes.push(
 						elsewhere(
 							scope === "user"
@@ -220,6 +226,16 @@ export function verifyWindows(
 							message: `${op.dir} is not in PATH for new terminals (envhound blame PATH shows why)`,
 						};
 			case "path-remove":
+				if (op.duplicate)
+					return path.filter((d) => d === key(op.dir)).length > 1
+						? {
+								ok: false,
+								message: `${op.dir} is still in PATH more than once (envhound path shows who adds it)`,
+							}
+						: {
+								ok: true,
+								message: `${op.dir} is in PATH once for new terminals`,
+							};
 				return path.includes(key(op.dir))
 					? {
 							ok: false,

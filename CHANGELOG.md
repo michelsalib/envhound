@@ -16,6 +16,8 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 - macOS: assignments in sourced files were missed when their paths were long, because macOS's
   bash 3.2 cuts its trace prefix at 99 bytes.
 - macOS: bash completion offered nothing, because of how bash 3.2 expands an array slice.
+- `envhound edit`: deleting a PATH entry that is a duplicate removed every copy of it; now only
+  that copy goes and the first one stays.
 
 ### Security
 

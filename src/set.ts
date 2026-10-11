@@ -26,7 +26,8 @@ export type EditOp =
 	| { kind: "set"; name: string; value: string; file?: string }
 	| { kind: "unset"; name: string; file?: string }
 	| { kind: "path-add"; dir: string; position: "front" | "back" }
-	| { kind: "path-remove"; dir: string };
+	/** `duplicate`: remove only the copies after the first, which stays (the editor's d on a duplicate) */
+	| { kind: "path-remove"; dir: string; duplicate?: boolean };
 
 /** PATH is changed with path add/remove only. Windows variable names ignore case, so there Path is PATH too. */
 export const isPathName = (name: string, windows: boolean) =>
@@ -87,7 +88,8 @@ export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
 				const entry = pathEntries(trace, trace.final.PATH ?? "").find(
 					(e) => e.dir === op.dir && e.addedBy && !fromEnvhound(e.addedBy, loc),
 				);
-				if (entry)
+				// removing a duplicate: the other copy is meant to stay
+				if (entry && !op.duplicate)
 					notes.push(
 						`${op.dir} is also added at ${where(entry.addedBy!, loc.home)}; remove that line yourself`,
 					);
@@ -199,6 +201,16 @@ export function verify(
 							message: `${op.dir} is not in PATH of ${fresh} (envhound blame PATH shows why)`,
 						};
 			case "path-remove":
+				if (op.duplicate)
+					return path.filter((d) => d === op.dir).length > 1
+						? {
+								ok: false,
+								message: `${op.dir} is still in PATH more than once (envhound path shows who adds it)`,
+							}
+						: {
+								ok: true,
+								message: `${op.dir} is in PATH once for ${fresh}`,
+							};
 				return path.includes(op.dir)
 					? {
 							ok: false,
