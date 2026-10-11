@@ -1,4 +1,11 @@
-import type { BlameReport, EnvRow, PathEntry, PathStep } from "./analyze.ts";
+import type {
+	BlameReport,
+	CommandMatch,
+	EnvRow,
+	PathEntry,
+	PathStep,
+	WhyReport,
+} from "./analyze.ts";
 import { origin } from "./analyze.ts";
 import type { DotenvKey, DotenvProblem } from "./dotenv.ts";
 import type { Assignment, Location } from "./model.ts";
@@ -313,14 +320,17 @@ function pathDiff(
 	);
 }
 
+/** Who put a PATH entry there, as the ADDED BY column says it. */
+const addedBy = (e: PathEntry, o: RenderOptions) =>
+	e.source === "startup"
+		? where(e.addedBy!, o.home)
+		: e.source === "initial"
+			? "(initial)"
+			: "(inherited)";
+
 export function renderPath(entries: PathEntry[], o: RenderOptions): string {
 	const c = paint(o);
-	const by = (e: PathEntry) =>
-		e.source === "startup"
-			? where(e.addedBy!, o.home)
-			: e.source === "initial"
-				? "(initial)"
-				: "(inherited)";
+	const by = (e: PathEntry) => addedBy(e, o);
 	const flag = (e: PathEntry) =>
 		e.dir === ""
 			? "empty entry: searches the current directory"
@@ -359,6 +369,59 @@ export function renderPath(entries: PathEntry[], o: RenderOptions): string {
 		),
 	);
 	return [header, ...body].join("\n");
+}
+
+export function renderWhy(r: WhyReport, o: RenderOptions): string {
+	const c = paint(o);
+	const file = (m: CommandMatch) =>
+		tilde(m.file, o.home) +
+		(m.target ? c.dim(` → ${tilde(m.target, o.home)}`) : "");
+	const from = (m: CommandMatch) =>
+		`PATH #${m.entry.index} ${tilde(m.entry.dir, o.home)}, ${
+			m.entry.source === "startup"
+				? `added at ${addedBy(m.entry, o)}`
+				: m.entry.source === "initial"
+					? `in the PATH ${o.shell === "windows" ? "Windows starts" : "the shell started"} with`
+					: "inherited from whatever launched this shell"
+		}`;
+	const [first, ...hidden] = r.matches;
+	const real = (m: CommandMatch) => m.target ?? m.file;
+	const out: string[] = [];
+	if (first)
+		out.push(
+			`${c.bold(r.command)} runs ${file(first)}`,
+			`  from ${from(first)}`,
+		);
+	else out.push(c.red(`${r.command} is not in PATH`));
+	if (hidden.length)
+		out.push(
+			"",
+			"Also in PATH, but hidden by it:",
+			...hidden.map((m) => {
+				const same = r.matches.find((x) => real(x) === real(m));
+				const note =
+					same && same !== m
+						? c.dim(` (the same file as PATH #${same.entry.index})`)
+						: "";
+				return `  ${file(m)}${note}\n    ${c.dim(from(m))}`;
+			}),
+		);
+	if (r.fresh !== undefined)
+		out.push(
+			"",
+			c.yellow(
+				r.fresh
+					? `! ${words(o).fresh} runs ${tilde(r.fresh.file, o.home)} instead, from ${from(r.fresh)}`
+					: `! ${words(o).fresh} doesn't find ${r.command}`,
+			),
+		);
+	out.push(
+		"",
+		c.dim(
+			`Aliases, functions and builtins come before PATH: ${o.shell === "windows" ? "Get-Command" : "type"} ${r.command} shows them.`,
+		),
+	);
+	return out.join("\n");
 }
 
 // JSON forms: same data, secrets masked unless asked otherwise.

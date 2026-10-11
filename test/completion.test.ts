@@ -14,6 +14,7 @@ describe("complete", () => {
 		expect(names([""])).toEqual([
 			"list",
 			"blame",
+			"why",
 			"path",
 			"dotenv",
 			"set",
@@ -24,6 +25,8 @@ describe("complete", () => {
 		]));
 	test("prefix filter", () => expect(names(["b"])).toEqual(["blame"]));
 	test("flags", () => expect(names(["--j"])).toEqual(["--json"]));
+	test("--shell takes bash or zsh", () =>
+		expect(names(["--shell", "z"])).toEqual(["zsh"]));
 	test("variable names after blame, live from env", () =>
 		expect(names(["blame", "PA"])).toEqual(["PAGER", "PATH"]));
 	test("flags before the command don't count", () =>

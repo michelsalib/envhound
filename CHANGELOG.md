@@ -12,6 +12,10 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
   `PATH`. `set`, `unset` and `path add|remove` load envhound's file from `~/.zprofile` (or
   `$ZDOTDIR/.zprofile`), and say when `~/.zshrc` or `~/.zlogin` sets the same variable later.
 - `--shell bash|zsh` replays that shell instead of your login shell.
+- `envhound why COMMAND`: which file a command runs, from which `PATH` entry and the startup line
+  that added it, which files of the same name it hides (and which are the same file through a
+  symlink), and whether a fresh login shell would run another one. On Windows it tries each
+  `PATHEXT` extension, as cmd does.
 
 ### Changed
 

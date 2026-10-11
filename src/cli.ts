@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
-import { blame, envRows, pathEntries } from "./analyze.ts";
+import { blame, envRows, pathEntries, why } from "./analyze.ts";
 import {
 	type CompletionShell,
 	complete,
@@ -34,6 +34,7 @@ import {
 	renderDotenv,
 	renderList,
 	renderPath,
+	renderWhy,
 	shown,
 	tilde,
 } from "./format.ts";
@@ -76,6 +77,9 @@ const HELP = `Usage:
   envhound [list]        every exported variable, with the startup file:line that sets it
   envhound blame VAR     every startup file:line that assigns VAR, in order
                          (for PATH: what each step added or removed)
+  envhound why COMMAND   which file COMMAND runs, the PATH entry and startup line
+                         that put it first, the ones it hides, and whether a
+                         fresh login shell would run another
   envhound path          current PATH, one entry per line, with who added it,
                          flagging missing directories and duplicates
   envhound dotenv [FILE...]
@@ -111,7 +115,7 @@ const HELP = `Usage:
                          the download must match SHA256SUMS and the npm package
 
 Options:
-  --json              machine-readable output (list, blame, path, dotenv)
+  --json              machine-readable output (list, blame, why, path, dotenv)
   --show-secrets      don't mask values of variables like *_TOKEN, *_KEY or *_PAT,
                       or passwords in URLs (postgres://user:********@host)
   --home DIR          act as if HOME were DIR (on Windows: only for backups)
@@ -302,6 +306,21 @@ async function main(argv: string[]): Promise<number> {
 				() => blameJson(report, opts),
 			);
 			return 0;
+		}
+		case "why": {
+			const cmd = args[0];
+			if (!cmd || args.length > 1)
+				return usage("why needs one command name, e.g. envhound why python3");
+			if (/[\\/]/.test(cmd))
+				return usage(
+					`'${cmd}' is a path: the shell runs it without searching PATH`,
+				);
+			const report = why(trace(), cmd, process.env);
+			print(
+				() => renderWhy(report, opts),
+				() => report,
+			);
+			return report.matches.length ? 0 : 1;
 		}
 		case "path": {
 			const [sub, ...dirs] = args;

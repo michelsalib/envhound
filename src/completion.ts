@@ -4,6 +4,7 @@
 export const COMMANDS: Record<string, string> = {
 	list: "every exported variable and where it is set",
 	blame: "every startup line that assigns a variable",
+	why: "which file a command runs, and why",
 	path: "PATH entries, who added them, missing and duplicates",
 	dotenv: "check .env files against your shell",
 	set: "set variables for future login shells (or a .env file)",

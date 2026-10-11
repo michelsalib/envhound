@@ -95,6 +95,7 @@ rename. Downloads are https only.
 |---|---|
 | `envhound` / `envhound list` | every exported variable, with the startup `file:line` (on Windows, the registry key) that sets it |
 | `envhound blame VAR` | every startup `file:line` (on Windows, registry key) that assigns `VAR`, in order; for `PATH`, what each step added or removed |
+| `envhound why COMMAND` | which file `COMMAND` runs (on Windows, with `PATHEXT`), the `PATH` entry and startup line that put it first, the files it hides, and whether a fresh login shell would run another one. Exits 1 when it is not found |
 | `envhound path` | the current `PATH` one entry per line, who added each entry, missing directories and duplicates |
 | `envhound dotenv [FILE…]` | for each key of a `.env` file (default `./.env`): its value (with `$VAR`, `${VAR}` and `${VAR:-default}` expanded from your shell, then from the lines above), and whether it is new, same as your shell, or in conflict (with the startup line behind the shell's value); plus syntax problems and duplicates, and warnings for expansion. Exits 1 on problems, not on warnings |
 | `envhound set NAME=value…` | set variables for future login shells (see below) |
@@ -104,7 +105,7 @@ rename. Downloads are https only.
 | `envhound edit [FILE…]` | interactive editor for variables, `PATH` and `.env` files (see below) |
 | `envhound completion bash\|zsh\|fish\|powershell` | a shell completion script (commands, flags, live variable names) |
 
-Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, `*_PAT`, … and passwords in URLs such as `postgres://user:********@host` are masked by default), `--home DIR`,
+Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, `*_PAT`, … and passwords in URLs such as `postgres://user:********@host` are masked by default), `--home DIR`, `--shell bash|zsh`,
 and for changes `--file FILE`, `--yes`, `--dry-run`, `--append`.
 
 `blame` also tells you when an assignment doesn't stick:
