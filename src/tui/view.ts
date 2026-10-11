@@ -1,6 +1,7 @@
 // Draws a State as exactly `height` lines of at most `width` columns.
 import { basename, relative } from "node:path";
 import { masked, tilde } from "../format.ts";
+import { MACHINE, MACHINE_KEY } from "../trace/windows.ts";
 import {
 	currentTab,
 	cursorOf,
@@ -46,6 +47,9 @@ function cell(s: string, w: number): string {
 		? chars.slice(0, w - 1).join("") + "…"
 		: clean.padEnd(w + (clean.length - chars.length));
 }
+
+/** The machine's key in full where there is room for it: the table shows it as HKLM\…\Environment. */
+const fullKey = (by: string) => by.replace(MACHINE, MACHINE_KEY);
 
 /** Lines the selected entry's detail may take: a long path or value wraps rather than being cut. */
 const DETAIL_LINES = 4;
@@ -305,7 +309,7 @@ function varDetail(s: State): string {
 			? "one of your variables"
 			: "set by envhound"
 		: r.source || r.by.startsWith("HK")
-			? `set at ${r.by}`
+			? `set at ${fullKey(r.by)}`
 			: r.by === "(inherited)"
 				? "inherited from the program that started this shell"
 				: s.data.windows
@@ -323,11 +327,14 @@ function pathLines(
 ): string[] {
 	const rows = pathViews(s);
 	if (!rows.length) return [c.dim("PATH is empty")];
-	const dirW = Math.min(
-		60,
-		Math.max(9, ...rows.map((r) => tilde(r.dir, s.data.home).length)),
-	);
 	const byW = Math.min(32, Math.max(8, ...rows.map((r) => r.by.length)));
+	// the directory gets all the room the other columns leave: it is cut only when it can't fit
+	// ("   #  " before it, two spaces around ADDED BY, and room for "duplicate of #12")
+	const longest = Math.max(
+		9,
+		...rows.map((r) => [...tilde(r.dir, s.data.home)].length),
+	);
+	const dirW = Math.max(9, Math.min(longest, width - 6 - 2 - byW - 2 - 16));
 	const list = height - 1;
 	const cursor = cursorOf(s);
 	const start = windowStart(cursor, rows.length, list);
@@ -374,7 +381,7 @@ function pathDetail(s: State): string {
 			? "in your Path"
 			: "added by envhound"
 		: r.source || r.by.startsWith("HK")
-			? `added at ${r.by}`
+			? `added at ${fullKey(r.by)}`
 			: r.by === "(initial)"
 				? "in the initial PATH bash starts with"
 				: "inherited from the program that started this shell";

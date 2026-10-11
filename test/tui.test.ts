@@ -512,3 +512,19 @@ test("the selected entry's detail wraps, so a long path is shown whole", () => {
 	expect(detail).toContain(long);
 	expect(wrap("abcdefgh", 3, 2)).toEqual(["abc", "de…"]);
 });
+
+test("on a wide screen a long path is shown whole in the table too", () => {
+	const long = `/opt/${"very-long-directory-name/".repeat(4)}bin`; // 109 characters
+	const d = data();
+	d.path = [
+		{ dir: long, by: "~/.profile:3", managed: false, exists: true },
+		...d.path,
+	];
+	const s: State = { ...initialState(d), tab: 1 };
+	const table = (width: number) =>
+		render(s, width, 20, { color: false }).slice(0, 8).join("\n");
+	expect(table(160)).toContain(long);
+	// on a narrow one it is cut from the left, and the detail below has it whole
+	expect(table(80)).not.toContain(long);
+	expect(table(80)).toContain("…");
+});
