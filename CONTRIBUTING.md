@@ -36,9 +36,3 @@ On Windows, the tests read and write a scratch registry key instead of tracing b
    manifest (`envhound.json`, for the `michelsalib/scoop-envhound` bucket) and the winget manifests
    (a pull request to `microsoft/winget-pkgs`) under `dist/packages/`. Scoop's `autoupdate` can also
    update its manifest on its own.
-
-## The demo
-
-`docs/demo.gif` is recorded from real commands on `demo/home` by `bun run demo` (it needs zsh, python3 and
-[agg](https://github.com/asciinema/agg); pass agg's path as an argument when it isn't in `PATH`). Re-record
-it when the output of `blame`, `why` or `set` changes.

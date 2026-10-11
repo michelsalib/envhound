@@ -34,7 +34,6 @@
 		"dev": "bun src/cli.ts",
 		"build": "bun build src/cli.ts --target=node --minify --outfile dist/envhound.js",
 		"build:bin": "bun scripts/build-binaries.ts",
-		"demo": "bun run build && bun scripts/demo.ts",
 		"test": "bun test --timeout 30000",
 		"typecheck": "tsc",
 		"lint": "biome check",
