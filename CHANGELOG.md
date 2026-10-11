@@ -2,18 +2,14 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
-## Unreleased
-
-### Fixed
-
-- `.env` values holding the Unicode line or paragraph separator (U+2028, U+2029) were not read.
-
 ## 0.3.0 (2026-10-11)
 
 ### Added
 
-- Windows: `--machine` makes `set`, `unset` and `path add|remove` change the machine's variables
-  (`HKLM`), for every user, from an administrator terminal. Without it, envhound says how to.
+- Windows: the machine's variables (`HKLM`) can change too, through Windows' administrator prompt
+  when the terminal isn't elevated. `unset` and `path remove` remove a value wherever it is set,
+  yours and the machine's; in `envhound edit`, `d` removes a machine variable or Path entry and `e`
+  edits a machine variable's value. `set` and `path add` still go to your own variables.
 
 ### Fixed
 
@@ -24,6 +20,7 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 - macOS: bash completion offered nothing, because of how bash 3.2 expands an array slice.
 - `envhound edit`: deleting a PATH entry that is a duplicate removed every copy of it; now only
   that copy goes and the first one stays.
+- `.env` values holding the Unicode line or paragraph separator (U+2028, U+2029) were not read.
 
 ### Security
 

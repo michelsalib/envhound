@@ -68,7 +68,8 @@ export type TabDef =
 
 export type PromptKind =
 	| { kind: "filter" }
-	| { kind: "edit"; name: string; file?: string }
+	/** `machine`: Windows, the machine's own value, for every user */
+	| { kind: "edit"; name: string; file?: string; machine?: boolean }
 	| { kind: "new-name"; file?: string }
 	| { kind: "new-value"; name: string; file?: string }
 	| { kind: "path-add"; position: "front" | "back" };
@@ -196,7 +197,7 @@ export function pathViews(s: State): PathView[] {
 			for (const r of rows)
 				if (
 					r.dir === op.dir &&
-					r.managed &&
+					(r.managed || fromMachine(s, r)) &&
 					(!op.duplicate || r.duplicateOf !== undefined)
 				)
 					r.pending = "remove";
@@ -293,10 +294,15 @@ function submitPrompt(s: State): State {
 		case "edit":
 		case "new-value": {
 			const { name, file } = p.for;
+			const machine = p.for.kind === "edit" && p.for.machine;
 			return stage(
 				closed,
-				{ kind: "set", name, value: p.value, file },
-				`${name} will be set${file ? ` in ${short(s, file)}` : ""}`,
+				machine
+					? { kind: "set", name, value: p.value, machine }
+					: { kind: "set", name, value: p.value, file },
+				machine
+					? `${name} will be set for every user (Windows asks for administrator rights)`
+					: `${name} will be set${file ? ` in ${short(s, file)}` : ""}`,
 			);
 		}
 		case "new-name": {
@@ -389,7 +395,13 @@ interface Pair {
 	/** current value, staged one included */
 	value: string;
 	source?: Location;
+	/** Windows: set by the machine (HKLM) only, so an edit changes it for every user */
+	machine?: boolean;
 }
+
+/** Windows: a row the machine's variables (HKLM) set, which envhound changes through Windows' administrator prompt. */
+const fromMachine = (s: State, row: { by: string }) =>
+	s.data.windows && row.by.startsWith("HKLM");
 
 /** Keys shared by the Variables and .env tabs, which both list NAME=value pairs. */
 function pairKey(
@@ -431,7 +443,7 @@ function pairKey(
 			{
 				...s,
 				prompt: {
-					for: { kind: "edit", name: row.name, file },
+					for: { kind: "edit", name: row.name, file, machine: row.machine },
 					label: `${row.name}=`,
 					value: row.value,
 					secret: isSecret(row.name),
@@ -459,6 +471,7 @@ function varKey(s: State, key: Key): [State, Effect?] {
 		name: row.name,
 		value: row.newValue ?? row.value ?? "",
 		source: row.source,
+		machine: fromMachine(s, row) && !row.managed,
 	};
 	return pairKey(s, key, pair, undefined, () => {
 		const r = row!;
@@ -475,6 +488,12 @@ function varKey(s: State, key: Key): [State, Effect?] {
 				s,
 				op,
 				`${r.name} will be removed from ${s.data.windows ? "your variables" : "envhound's file"}`,
+			);
+		if (fromMachine(s, r))
+			return stage(
+				s,
+				op,
+				`${r.name} will be removed for every user (Windows asks for administrator rights)`,
 			);
 		return { ...s, message: { text: notOurs(s, r.name, r), error: true } };
 	});
@@ -519,7 +538,7 @@ function pathKey(s: State, key: Key): [State, Effect?] {
 			: { kind: "path-remove", dir: row.dir };
 		if (row.pending)
 			return [unstage(s, op, `change to ${short(s, row.dir)} dropped`)];
-		if (row.managed)
+		if (row.managed || fromMachine(s, row))
 			return [
 				stage(
 					s,
@@ -557,8 +576,6 @@ function notOurs(
 		return `${what} comes from ${row.by}, not envhound: press o to open that line`;
 	if (row.by === "(inherited)")
 		return `${what} comes from the program that started this shell`;
-	if (s.data.windows && row.by.startsWith("HKLM"))
-		return `${what} comes from ${row.by}, for every user: change it with envhound --machine, from an administrator terminal`;
 	return `${what} is set by ${s.data.windows ? "Windows" : "login or bash"} itself`;
 }
 

@@ -23,10 +23,12 @@ import {
 } from "./format.ts";
 import { registryText } from "./set-windows.ts";
 import {
+	isElevated,
 	type RegistryWrite,
 	readRegistry,
 	type Scope,
 	writeRegistry,
+	writeRegistryElevated,
 } from "./trace/windows.ts";
 
 export interface FileChange {
@@ -163,7 +165,12 @@ export function applyChanges(
 				mkdirSync(backupDir, { recursive: true, mode: 0o700 });
 				const hive = c.scope === "machine" ? "HKLM" : "HKCU";
 				const backup = join(backupDir, `${stamp}-${hive}-Environment.reg`);
-				writeRegistry(c.registry, { backup, scope: c.scope });
+				// the machine's variables need an administrator: Windows asks, unless this terminal is one
+				const write =
+					c.scope === "machine" && !isElevated()
+						? writeRegistryElevated
+						: writeRegistry;
+				write(c.registry, { backup, scope: c.scope });
 				backups.push(backup);
 				continue;
 			}
