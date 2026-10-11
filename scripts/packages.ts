@@ -49,13 +49,16 @@ ${bin("envhound-linux-x64")}
 
   def install
     bin.install Dir["envhound-*"].first => "envhound"
+    # a release file, downloaded as is: not executable yet
+    chmod 0755, bin/"envhound"
     # zsh's completion is meant for eval in ~/.zshrc, not for fpath
     generate_completions_from_executable(bin/"envhound", "completion", shells: [:bash, :fish])
   end
 
   test do
     assert_equal version.to_s, shell_output("#{bin}/envhound --version").strip
-    assert_match "is not in PATH", shell_output("#{bin}/envhound why envhound-test-missing 2>&1", 1)
+    # nothing that replays the login shell: too slow in brew's sandbox
+    assert_match "envhound __complete", shell_output("#{bin}/envhound completion bash")
   end
 end
 `;
