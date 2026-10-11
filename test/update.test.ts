@@ -20,12 +20,15 @@ import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import pkg from "../package.json" with { type: "json" };
 import {
+	binaryName,
+	compiled,
 	decide,
 	download,
 	installKind,
 	latestRelease,
 	newer,
 	readState,
+	replaceBinary,
 	replaceScript,
 	sumFor,
 	tarFile,
@@ -63,21 +66,31 @@ function tgz(files: Record<string, Buffer | string>): Buffer {
 
 /**
  * A local release of `script` as `version`: the GitHub files, the npm package and the registry's
- * answer, all file: URLs. `npm` replaces the script inside the npm package, `sums` SHA256SUMS.
+ * answer, all file: URLs. `files` are more GitHub files, such as binaries. `npm` replaces the script
+ * inside the npm package, `sums` SHA256SUMS on GitHub, `npmSums` the copy in the npm package.
  */
 function fakeRelease(
 	script: Buffer | string,
-	opts: { version?: string; npm?: string; sums?: string } = {},
+	opts: {
+		version?: string;
+		npm?: string;
+		sums?: string;
+		npmSums?: string;
+		files?: Record<string, Buffer | string>;
+	} = {},
 ): Record<string, string> {
 	const dir = mkdtempSync(join(tmpdir(), "envhound-release-"));
-	writeFileSync(join(dir, "envhound.js"), script);
-	writeFileSync(
-		join(dir, "SHA256SUMS"),
-		opts.sums ?? `${sha("sha256", script)}  envhound.js\n`,
-	);
+	const files = { "envhound.js": script, ...opts.files };
+	for (const [name, data] of Object.entries(files))
+		writeFileSync(join(dir, name), data);
+	const sums = Object.entries(files)
+		.map(([name, data]) => `${sha("sha256", data)}  ${name}\n`)
+		.join("");
+	writeFileSync(join(dir, "SHA256SUMS"), opts.sums ?? sums);
 	const pkgTgz = tgz({
 		"package/package.json": "{}",
 		"package/dist/envhound.js": opts.npm ?? script,
+		"package/dist/SHA256SUMS": opts.npmSums ?? sums,
 	});
 	writeFileSync(join(dir, "envhound.tgz"), pkgTgz);
 	mkdirSync(join(dir, "registry"));
@@ -103,7 +116,7 @@ describe("verified upgrades", () => {
 	test("a release that matches SHA256SUMS and npm", async () => {
 		const r = await latestRelease(fakeRelease(script));
 		expect(r.version).toBe("9.9.9");
-		expect(r.script.toString()).toBe(script);
+		expect(r.data.toString()).toBe(script);
 	});
 	test("refuses a checksum mismatch", () =>
 		expect(
@@ -115,6 +128,50 @@ describe("verified upgrades", () => {
 		expect(
 			latestRelease(fakeRelease(script, { npm: "console.log('other')\n" })),
 		).rejects.toThrow("not the one published on npm"));
+	test("a binary, listed in npm's SHA256SUMS too", async () => {
+		const bin = Buffer.from("\x7fELF binary");
+		const files = { "envhound-linux-x64": bin };
+		const r = await latestRelease(
+			fakeRelease(script, { files }),
+			"envhound-linux-x64",
+		);
+		expect(r.data).toEqual(bin);
+		await expect(
+			latestRelease(
+				fakeRelease(script, {
+					files,
+					npmSums: `${"0".repeat(64)}  envhound-linux-x64\n`,
+				}),
+				"envhound-linux-x64",
+			),
+		).rejects.toThrow("not the one npm lists");
+		await expect(
+			latestRelease(fakeRelease(script), "envhound-linux-x64"),
+		).rejects.toThrow(); // not in that release
+	});
+	test("binary names, and telling a binary from a script", () => {
+		expect(binaryName("linux", "x64")).toBe("envhound-linux-x64");
+		expect(binaryName("darwin", "arm64")).toBe("envhound-darwin-arm64");
+		expect(binaryName("win32", "x64")).toBe("envhound-windows-x64.exe");
+		expect(binaryName("win32", "arm64")).toBeUndefined();
+		expect(binaryName("freebsd", "x64")).toBeUndefined();
+		expect(compiled("/$bunfs/root/envhound")).toBe(true);
+		expect(compiled("B:\\~BUN\\root\\envhound.exe")).toBe(true);
+		expect(compiled("/home/u/.local/bin/envhound")).toBe(false);
+	});
+	test("replaceBinary keeps the mode; on Windows the old one moves aside", () => {
+		const dir = mkdtempSync(join(tmpdir(), "envhound-bin-"));
+		const target = join(dir, "envhound.exe");
+		writeFileSync(target, "old");
+		chmodSync(target, 0o755);
+		replaceBinary(target, Buffer.from("new"), true);
+		expect(readFileSync(target, "utf8")).toBe("new");
+		expect(readFileSync(`${target}.old`, "utf8")).toBe("old");
+		replaceBinary(target, Buffer.from("newer"), true);
+		expect(readFileSync(`${target}.old`, "utf8")).toBe("new");
+		if (process.platform !== "win32")
+			expect(statSync(target).mode & 0o777).toBe(0o755);
+	});
 	test("refuses plain http", () =>
 		expect(
 			latestRelease({ ENVHOUND_REGISTRY: "http://registry.example" }),
@@ -171,6 +228,13 @@ describe("verified upgrades", () => {
 
 describe("installKind", () => {
 	const cases: [string, string][] = [
+		["/opt/homebrew/Cellar/envhound/0.4.0/bin/envhound", "brew"],
+		["C:\\Users\\u\\scoop\\apps\\envhound\\current\\envhound.exe", "scoop"],
+		[
+			"C:\\Users\\u\\AppData\\Local\\Microsoft\\WinGet\\Packages\\MichelSalib.envhound_x\\envhound.exe",
+			"winget",
+		],
+		["/home/u/.local/bin/envhound", "standalone"],
 		["/home/u/.npm/_npx/0d1f/node_modules/envhound/dist/envhound.js", "npx"],
 		[
 			"/tmp/bunx-1000-envhound@latest/node_modules/envhound/dist/envhound.js",
@@ -592,3 +656,93 @@ describe.skipIf(process.platform !== "win32")(
 		});
 	},
 );
+
+// the binary for this machine, built from the source, installed and upgraded the way users do
+describe.skipIf(!binaryName())("standalone binary: install and upgrade", () => {
+	const root = join(import.meta.dir, "..");
+	const name = binaryName()!;
+	const windows = process.platform === "win32";
+	const release = mkdtempSync(join(tmpdir(), "envhound-release-"));
+	const run = (cmd: string, args: string[], env: Record<string, string> = {}) =>
+		spawnSync(cmd, args, {
+			encoding: "utf8",
+			env: { ...process.env, ENVHOUND_NO_UPDATE_CHECK: "1", ...env },
+		});
+	let binary: Buffer;
+
+	beforeAll(() => {
+		const r = spawnSync(
+			"bun",
+			[
+				"build",
+				"src/cli.ts",
+				"--compile",
+				"--minify",
+				"--outfile",
+				join(release, name),
+			],
+			{ cwd: root, encoding: "utf8" },
+		);
+		expect(r.status).toBe(0);
+		binary = readFileSync(join(release, name));
+		writeFileSync(
+			join(release, "SHA256SUMS"),
+			`${sha("sha256", binary)}  ${name}\n`,
+		);
+	}, 120_000);
+
+	test("installs without Node or Bun, then upgrades itself", () => {
+		const home = mkdtempSync(join(tmpdir(), "envhound-bin-"));
+		const dir = join(home, "bin");
+		const env = {
+			ENVHOUND_BASE_URL: pathToFileURL(release).href,
+			ENVHOUND_INSTALL_DIR: dir,
+			ENVHOUND_BINARY: "1",
+			ENVHOUND_NO_COMPLETION: "1",
+			HOME: home,
+		};
+		const r = windows
+			? run(
+					"powershell.exe",
+					[
+						"-NoProfile",
+						"-NonInteractive",
+						"-ExecutionPolicy",
+						"Bypass",
+						"-File",
+						join(root, "install.ps1"),
+					],
+					env,
+				)
+			: run("sh", [join(root, "install.sh")], env);
+		expect(r.stderr).toBe("");
+		expect(r.stdout).toContain(
+			`installed envhound ${pkg.version} in ${dir} (standalone binary)`,
+		);
+		const exe = join(dir, windows ? "envhound.exe" : "envhound");
+		expect(run(exe, ["--version"]).stdout.trim()).toBe(pkg.version);
+		if (windows) expect(existsSync(join(dir, "envhound.cmd"))).toBe(false);
+
+		const files = { [name]: binary };
+		const bad = run(exe, ["upgrade"], {
+			...fakeRelease("x", {
+				files,
+				npmSums: `${"0".repeat(64)}  ${name}\n`,
+			}),
+			HOME: home,
+		});
+		expect(bad.status).toBe(1);
+		expect(bad.stderr).toContain("nothing was changed");
+
+		const u = run(exe, ["upgrade"], {
+			...fakeRelease("x", { files }),
+			HOME: home,
+		});
+		expect(u.stderr).toBe("");
+		expect(u.stdout).toContain(
+			`upgraded envhound ${pkg.version} to 9.9.9 in ${realpathSync(dir)}`,
+		);
+		expect(existsSync(`${exe}.old`)).toBe(windows);
+		expect(run(exe, ["--version"]).stdout.trim()).toBe(pkg.version);
+	}, 120_000);
+});

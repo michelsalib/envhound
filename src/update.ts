@@ -19,11 +19,45 @@ export const REPO = "michelsalib/envhound";
 const REGISTRY = "https://registry.npmjs.org/envhound";
 export const WEEK = 7 * 24 * 3600 * 1000;
 
+/**
+ * A standalone binary (bun build --compile): its script lives in Bun's virtual file system
+ * (/$bunfs/root/… or B:\\~BUN\\root\\… on Windows), and the file on disk is process.execPath.
+ */
+export const compiled = (argv1 = process.argv[1] ?? "") =>
+	/[\\/](\$bunfs|~BUN)[\\/]/.test(argv1);
+
+/** The file this envhound runs from: the script, or the binary. */
+export const selfPath = () =>
+	compiled() ? process.execPath : (process.argv[1] ?? process.execPath);
+
+/** The release file holding the binary for this platform, or undefined when there is none. */
+export function binaryName(
+	platform: string = process.platform,
+	arch: string = process.arch,
+): string | undefined {
+	const os = { linux: "linux", darwin: "darwin", win32: "windows" }[platform];
+	if (!os || !["x64", "arm64"].includes(arch)) return undefined;
+	if (os === "windows" && arch !== "x64") return undefined;
+	return `envhound-${os}-${arch}${os === "windows" ? ".exe" : ""}`;
+}
+
 /** How this copy of envhound was installed, which decides how to update it. */
-export type InstallKind = "npx" | "bunx" | "bun" | "npm" | "standalone" | "dev";
+export type InstallKind =
+	| "npx"
+	| "bunx"
+	| "bun"
+	| "npm"
+	| "brew"
+	| "scoop"
+	| "winget"
+	| "standalone"
+	| "dev";
 
 export function installKind(script: string): InstallKind {
 	const p = script.replaceAll("\\", "/");
+	if (p.includes("/Cellar/envhound/")) return "brew";
+	if (/\/scoop\/apps\/envhound\//i.test(p)) return "scoop";
+	if (/\/WinGet\/(Packages|Links)\//i.test(p)) return "winget";
 	if (p.includes("/_npx/")) return "npx";
 	if (p.includes("/bunx-")) return "bunx";
 	if (p.includes("/.bun/install/global/")) return "bun";
@@ -45,6 +79,12 @@ export function upgradeCommand(kind: InstallKind): string {
 			return "bun add -g envhound@latest";
 		case "npm":
 			return "npm install -g envhound@latest";
+		case "brew":
+			return "brew upgrade envhound";
+		case "scoop":
+			return "scoop update envhound";
+		case "winget":
+			return "winget upgrade envhound";
 		case "standalone":
 			return "envhound upgrade";
 		case "dev":
@@ -122,7 +162,9 @@ export function updateNotice(
 		if (check) {
 			// recorded first, so a failing network doesn't start a check on every run
 			writeState(stateFile, { ...state, checkedAt: now });
-			spawn(process.execPath, [script, "__update-check", stateFile], {
+			// a binary runs itself; a script runs on the same node or bun as now
+			const args = compiled() ? [] : [script];
+			spawn(process.execPath, [...args, "__update-check", stateFile], {
 				detached: true,
 				stdio: "ignore",
 				windowsHide: true,
@@ -194,17 +236,19 @@ export function tarFile(tgz: Buffer, path: string): Buffer | undefined {
 
 export interface Release {
 	version: string;
-	/** dist/envhound.js, the same bytes on GitHub and on npm */
-	script: Buffer;
+	/** The release file: envhound.js, the same bytes on GitHub and on npm, or a binary. */
+	data: Buffer;
 }
 
 /**
- * The latest envhound, checked twice: against the release's SHA256SUMS, and against the copy npm
- * published, which must be byte for byte the same. Replacing it means compromising both GitHub
- * and npm. ENVHOUND_REGISTRY and ENVHOUND_BASE_URL point elsewhere (mirrors, tests).
+ * The latest envhound's `file` (envhound.js, or a binary such as envhound-linux-x64), checked twice:
+ * against the release's SHA256SUMS on GitHub, and against npm. npm has the same envhound.js, byte for
+ * byte, and the same SHA256SUMS, which lists the binaries. Replacing it means compromising both
+ * GitHub and npm. ENVHOUND_REGISTRY and ENVHOUND_BASE_URL point elsewhere (mirrors, tests).
  */
 export async function latestRelease(
 	env: Record<string, string | undefined>,
+	file = "envhound.js",
 ): Promise<Release> {
 	const registry = env.ENVHOUND_REGISTRY ?? REGISTRY;
 	const meta = JSON.parse(
@@ -227,14 +271,14 @@ export async function latestRelease(
 	const base =
 		env.ENVHOUND_BASE_URL ??
 		`https://github.com/${REPO}/releases/download/v${version}`;
-	const script = await download(`${base}/envhound.js`);
+	const data = await download(`${base}/${file}`);
 	const expected = sumFor(
 		(await download(`${base}/SHA256SUMS`)).toString(),
-		"envhound.js",
+		file,
 	);
-	if (!expected) throw new Error("SHA256SUMS has no entry for envhound.js");
-	if (sha256(script) !== expected)
-		throw new Error("checksum mismatch for envhound.js");
+	if (!expected) throw new Error(`SHA256SUMS has no entry for ${file}`);
+	if (sha256(data) !== expected)
+		throw new Error(`checksum mismatch for ${file}`);
 
 	const tgz = await download(tarball);
 	const [algorithm, digest] = integrity.split("-", 2);
@@ -245,12 +289,20 @@ export async function latestRelease(
 		throw new Error(
 			`the npm package for ${version} doesn't match its integrity`,
 		);
-	const published = tarFile(tgz, "package/dist/envhound.js");
-	if (!published?.equals(script))
-		throw new Error(
-			`envhound.js on GitHub is not the one published on npm for ${version}`,
-		);
-	return { version, script };
+	if (file === "envhound.js") {
+		const published = tarFile(tgz, "package/dist/envhound.js");
+		if (!published?.equals(data))
+			throw new Error(
+				`envhound.js on GitHub is not the one published on npm for ${version}`,
+			);
+	} else {
+		const sums = tarFile(tgz, "package/dist/SHA256SUMS");
+		if (!sums || sumFor(sums.toString(), file) !== expected)
+			throw new Error(
+				`${file} on GitHub is not the one npm lists for ${version}`,
+			);
+	}
+	return { version, data };
 }
 
 /**
@@ -270,5 +322,28 @@ export function replaceScript(target: string, script: Buffer): void {
 		mode: statSync(target).mode & 0o7777,
 		flag: "wx",
 	});
+	renameSync(tmp, target);
+}
+
+/**
+ * Put the new binary in place of `target`, keeping its mode. Windows can't overwrite a running
+ * program, but it can rename it: the old one moves aside to `target.old`, removed on the next upgrade.
+ */
+export function replaceBinary(
+	target: string,
+	data: Buffer,
+	windows = process.platform === "win32",
+): void {
+	const tmp = join(dirname(target), `.${basename(target)}.new`);
+	const old = `${target}.old`;
+	rmSync(tmp, { force: true });
+	try {
+		rmSync(old, { force: true });
+	} catch {} // still running: it goes next time
+	writeFileSync(tmp, data, {
+		mode: statSync(target).mode & 0o7777,
+		flag: "wx",
+	});
+	if (windows) renameSync(target, old);
 	renameSync(tmp, target);
 }

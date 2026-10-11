@@ -57,6 +57,23 @@ jobs:
       - name: Build is deterministic
         if: runner.os == 'Linux'
         run: cp dist/envhound.js /tmp/first.js && bun run build && cmp /tmp/first.js dist/envhound.js
+      # the release cross-compiles them all on Linux; each OS runs its own, and prints every hash:
+      # the same on every runner means the cross-compiled ones are the native ones
+      - name: Standalone binaries
+        if: matrix.node == 24
+        shell: bash
+        run: |
+          bun run build:bin
+          (cd dist/bin && (sha256sum * 2>/dev/null || shasum -a 256 *))
+          case "$RUNNER_OS-$RUNNER_ARCH" in
+            Linux-X64) bin=envhound-linux-x64 ;;
+            macOS-ARM64) bin=envhound-darwin-arm64 ;;
+            macOS-X64) bin=envhound-darwin-x64 ;;
+            Windows-X64) bin=envhound-windows-x64.exe ;;
+          esac
+          dist/bin/$bin --version
+          dist/bin/$bin why node
+          dist/bin/$bin list > /dev/null
       - run: shellcheck install.sh
         if: runner.os == 'Linux'
       - name: PSScriptAnalyzer
