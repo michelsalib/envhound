@@ -31,3 +31,8 @@ On Windows, the tests read and write a scratch registry key instead of tracing b
 2. Once it's merged, tag the merge commit and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The release workflow tests on every OS and builds the files, then waits for approval in the
    `release` environment. Approve it to publish to npm and create the GitHub release.
+4. Package managers: `bun scripts/packages.ts X.Y.Z` writes, from the release's `SHA256SUMS`, the
+   Homebrew formula (`Formula/envhound.rb`, for the `michelsalib/homebrew-envhound` tap), the Scoop
+   manifest (`envhound.json`, for the `michelsalib/scoop-envhound` bucket) and the winget manifests
+   (a pull request to `microsoft/winget-pkgs`) under `dist/packages/`. Scoop's `autoupdate` can also
+   update its manifest on its own.

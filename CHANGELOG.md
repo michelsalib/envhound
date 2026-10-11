@@ -23,6 +23,8 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
   `SHA256SUMS` on GitHub and the copy now published in the npm package. They are attested like the
   other release files.
 - `envhound upgrade` names the command for Homebrew, Scoop and winget installs.
+- `scripts/packages.ts` writes the Homebrew formula, Scoop manifest and winget manifests of a
+  release from its `SHA256SUMS`.
 
 ### Changed
 
