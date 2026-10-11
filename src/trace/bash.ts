@@ -25,6 +25,9 @@ const PS4 =
 	].join(SEP) +
 	SEP;
 const TRUNCATED = 99;
+// a record starts at a line that starts with the marker, repeated once per nesting level
+const RECORD = new RegExp(`\\n(?=${MARK})`);
+const MARKS = new RegExp(`^${MARK}+`);
 
 // env by its full path: `command -p env` would do, but bash 3.2 then runs it with the default PATH
 const ENV = ["/usr/bin/env", "/bin/env"].find((f) => existsSync(f)) ?? "env";
@@ -176,10 +179,9 @@ export function parseTrace(
 	const frames = new Map<string, Set<string>>(); // function call -> its local names
 
 	// Lines without the marker (shell warnings, multi-line values) belong to the previous record.
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: \x1f is the record marker PS4 starts with
 	// one char per byte, so bash 3.2's byte count can be applied; fields are decoded once cut
 	const bytes = typeof stderr === "string" ? Buffer.from(stderr) : stderr;
-	for (const record of bytes.toString("latin1").split(/\n(?=\x1f)/)) {
+	for (const record of bytes.toString("latin1").split(RECORD)) {
 		const fields = traceFields(record);
 		if (!fields) continue;
 		const { line, fn, callerLine, file, callerFile, cmd } = fields;
@@ -251,7 +253,7 @@ const utf8 = (latin1: string) => Buffer.from(latin1, "latin1").toString("utf8");
  */
 export function traceFields(record: string): TraceFields | undefined {
 	if (!record.startsWith(MARK)) return undefined;
-	const parts = record.replace(/^\x1f+/, "").split(SEP);
+	const parts = record.replace(MARKS, "").split(SEP);
 	if (parts.length >= 6) {
 		const [line, fn, callerLine, file, callerFile] = parts.map(utf8) as [
 			string,
@@ -269,10 +271,7 @@ export function traceFields(record: string): TraceFields | undefined {
 	// bash 3.2 keeps only the first TRUNCATED bytes of the expanded PS4 (marks included), so the
 	// command starts right there. Usable when the file name survived; the caller's may not have.
 	if (record.length <= TRUNCATED) return undefined;
-	const head = record
-		.slice(0, TRUNCATED)
-		.replace(/^\x1f+/, "")
-		.split(SEP);
+	const head = record.slice(0, TRUNCATED).replace(MARKS, "").split(SEP);
 	if (head.length < 5) return undefined; // the file name itself was cut
 	const [line, fn, callerLine, file] = head.map(utf8) as [
 		string,
