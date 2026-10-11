@@ -1,33 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="envhound logo">
   <title>envhound</title>
-  <defs>
-    <!-- right half of the face; the left half is its mirror image. Eyes in terminal green. -->
-    <g id="half">
-      <polygon points="150,54 186,58 212,92 228,150 224,204 204,222 184,190 174,140 166,96" fill="#a8521a" stroke="#a8521a" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="166,96 174,140 184,190 204,222 180,214 164,166 158,120" fill="#8c4214" stroke="#8c4214" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="150,54 186,58 210,90 176,80" fill="#c0631f" stroke="#c0631f" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="128,40 150,44 176,80 166,96 158,120 128,108" fill="#e08a3a" stroke="#e08a3a" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="128,108 158,120 160,132 140,128 128,126" fill="#d07a2c" stroke="#d07a2c" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="158,120 164,166 160,176 148,150 140,128 160,132" fill="#c76f26" stroke="#c76f26" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="128,126 140,128 148,150 146,186 128,190" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="148,150 160,176 158,196 146,186" fill="#eedcc6" stroke="#eedcc6" stroke-width="1" stroke-linejoin="round"/>
-      <polygon points="146,186 158,196 164,166 176,206 160,222 140,214 128,214 128,190" fill="#fbf1e3" stroke="#fbf1e3" stroke-width="1" stroke-linejoin="round"/>
-      <path d="M136 112 Q150 100 166 110 Q158 126 140 120 Z" fill="#2b1d14"/>
-      <circle cx="151" cy="113" r="4.6" fill="#7fd18b"/>
-    </g>
-  </defs>
   <rect width="256" height="256" rx="52" fill="#1b1f2a"/>
-  <g transform="translate(-6.4 -10) scale(1.05)">
-    <use href="#half" xlink:href="#half"/>
-    <use href="#half" xlink:href="#half" transform="matrix(-1 0 0 1 256 0)"/>
-    <polygon points="128,64 134,70 140,128 128,190 116,128 122,70" fill="#fbf1e3"/>
-    <!-- nose -->
-    <path d="M108 186 Q128 176 148 186 Q146 200 128 206 Q110 200 108 186 Z" fill="#2b1d14"/>
-    <path d="M118 188 Q122 186 124 190 M132 190 Q134 186 138 188" stroke="#55443a" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- the hound: floppy ears (the right one mirrors the left), a white blaze, a smile -->
+  <g transform="translate(-12.8 -34) scale(1.1)">
+  <path id="ear" d="M90 68 C60 66 40 104 42 152 C43 182 62 198 80 186 C98 172 104 124 108 86 Z" fill="#8c4214"/>
+  <use href="#ear" xlink:href="#ear" transform="matrix(-1 0 0 1 256 0)"/>
+  <path d="M128 48 C172 48 192 80 192 116 C192 154 170 182 128 182 C86 182 64 154 64 116 C64 80 84 48 128 48 Z" fill="#e08a3a"/>
+  <path d="M128 60 C135 60 140 92 145 126 L111 126 C116 92 121 60 128 60 Z" fill="#fbf1e3"/>
+  <ellipse cx="128" cy="152" rx="42" ry="32" fill="#fbf1e3"/>
+  <path d="M88 92 Q100 82 113 90" stroke="#a8521a" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M168 92 Q156 82 143 90" stroke="#a8521a" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <circle cx="102" cy="114" r="12" fill="#2b1d14"/><circle cx="98" cy="109.5" r="4" fill="#ffffff"/>
+  <circle cx="154" cy="114" r="12" fill="#2b1d14"/><circle cx="150" cy="109.5" r="4" fill="#ffffff"/>
+  <path d="M110 136 Q128 127 146 136 Q146 151 128 156 Q110 151 110 136 Z" fill="#2b1d14"/>
+  <ellipse cx="121" cy="137" rx="6" ry="2.8" fill="#6a564a"/>
+  <path d="M117 167 C117 188 139 188 139 167 Z" fill="#f07c8a"/>
+  <path d="M128 172 V180" stroke="#d65a6c" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M128 156 V163 M106 160 Q117 172 128 163 Q139 172 150 160" stroke="#2b1d14" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <!-- the prompt, with a blinking cursor; outlined in the background colour where it overlaps the head -->
-  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="54" font-weight="800" fill="#7fd18b" stroke="#1b1f2a" stroke-width="9" stroke-linejoin="round" paint-order="stroke">
-    <text x="164" y="224">$</text>
-    <text x="196" y="224">_<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" repeatCount="indefinite"/></text>
-  </g>
+  <!-- the terminal it looks over, paws on the edge, with the prompt it has tracked down -->
+  <rect x="24" y="172" width="208" height="68" rx="12" fill="#0f1218" stroke="#3a4152" stroke-width="3"/>
+  <circle cx="42" cy="186" r="4" fill="#3a4152"/><circle cx="56" cy="186" r="4" fill="#3a4152"/><circle cx="70" cy="186" r="4" fill="#3a4152"/>
+  <ellipse cx="88" cy="173" rx="22" ry="12" fill="#e08a3a"/><path d="M77 171 v6 M88 170 v7 M99 171 v6" stroke="#a8521a" stroke-width="2.5" stroke-linecap="round"/>
+  <ellipse cx="168" cy="173" rx="22" ry="12" fill="#e08a3a"/><path d="M157 171 v6 M168 170 v7 M179 171 v6" stroke="#a8521a" stroke-width="2.5" stroke-linecap="round"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="40" font-weight="800" fill="#7fd18b"><text x="44" y="228">$</text><text x="70" y="228">_<animate attributeName="opacity" values="1;1;0;0" keyTimes="0;.5;.5;1" dur="1.1s" repeatCount="indefinite"/></text></g>
 </svg>

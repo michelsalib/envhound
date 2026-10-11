@@ -1,55 +1,59 @@
-// The terminal version of assets/logo.svg: the hound, and the prompt it has tracked down.
+// The terminal version of assets/logo.svg: the hound, looking over a terminal at the prompt it has
+// tracked down.
 
-// Generated from assets/logo.svg: each character is a quarter-block (2x2 pixels), coloured by INK.
-const ART = [
-	"          ▗▟████▙▖",
-	"     ▗▄▄▟██████████▙▄▄▖",
-	"    ▟██████████████████▙",
-	"  ▗▟████████████████████▙▖",
-	"  ████████████████████████",
-	" ▐███████ ▟▖▜██▛▗▙ ███████▌",
-	" █████████▙▟████▙▟█████████",
-	"▐██████████████████████████▌",
-	"████████████████████████████",
-	"████████████████████████████",
-	"▐██████████████████████████▌",
-	"▐██████████▌    ▐██████████▌",
-	"▝███████████▙▄▄▟███████████▘",
-	"  ▀█▛▀▀ ▀█▛▀▀▀▀▀▀▜█▀ ▀▀▜█▀",
+// Pixel art of the logo, drawn by hand. Each character of the banner shows two pixels stacked, the
+// top one as a half block's foreground and the bottom one as its background, so every pixel has its
+// own colour. "." is no pixel: the terminal's background shows.
+const PIXELS = [
+	"...........tttttttttt...........",
+	".........tttttttttttttt.........",
+	"........tttttttccttttttt........",
+	"......tttttttttccttttttttt......",
+	".....ttttttttttcctttttttttt.....",
+	"...eetttttttttcccctttttttttee...",
+	"..eeetttttttttccccttttttttteee..",
+	"..eeetttbbbbttccccttbbbbttteee..",
+	".eeeetttttttttccccttttttttteeee.",
+	".eeeettttwddttccccttwddtttteeee.",
+	".eeeettttdddttccccttdddtttteeee.",
+	".eeeettttdddtcccccctdddtttteeee.",
+	".eeeettttttttcccccctttttttteeee.",
+	".eeeettttcccccddddccccctttteeee.",
+	".eeeetttcccccddddddcccccttteeee.",
+	".eeeetttcccccddddddcccccttteeee.",
+	".eeeetttccccccddddccccccttteeee.",
+	".eeeettttccdcccddcccdcctttteeee.",
+	"..eeeeettcccdddppdddccctteeeee..",
+	"..eeeeeettccccppppcccctteeeeee..",
+	"...eeeeeetttccppppccttteeeeee...",
+	"....eeTTTTTTttttttttTTTTTTee....",
+	".ffffTTTTTTTffffffffTTTTTTTffff.",
+	".fkkkTbTbTbTkkkkkkkkTbTbTbTkkkf.",
+	".fkkkkkkkkkkkkkkkkkkkkkkkkkkkkf.",
+	".fkkkkkkkkkkkkkkkkkkkkkkkkkkkkf.",
+	".fkkkkkkkkkkkkkkkkkkkkkkkkkkkkf.",
+	".ffffffffffffffffffffffffffffff.",
 ];
-// for each character of ART, its colour in PALETTE
-const INK = [
-	"          33333333",
-	"     222233333333332222",
-	"    22223333366333332222",
-	"  022000333336633333000220",
-	"  000000033336633330000000",
-	" 00000001 88666688 10000000",
-	" 00000001144666644110000000",
-	"0000000015556666555100000000",
-	"0000000115566666655110000000",
-	"0000000115766666675110000000",
-	"0000000167766666677610000000",
-	"000000116676    676611000000",
-	"0000011666666666666661100000",
-	"  00111 666666666666 11100",
-];
-// [24-bit colour, closest xterm-256 colour] for terminals without 24-bit colour
-const PALETTE: [string, number][] = [
-	["a8521a", 130],
-	["8c4214", 130],
-	["c0631f", 166],
-	["e08a3a", 172],
-	["d07a2c", 172],
-	["c76f26", 166],
-	["fbf1e3", 255],
-	["eedcc6", 252],
-	["7fd18b", 114],
-];
+// [24-bit colour, closest xterm-256 colour] for each pixel letter
+const PALETTE: Record<string, [string, number]> = {
+	t: ["e08a3a", 173], // head
+	T: ["e08a3a", 173], // paws
+	e: ["8c4214", 94], // ears
+	b: ["a8521a", 130], // brows, toes
+	c: ["fbf1e3", 255], // blaze, muzzle
+	d: ["2b1d14", 234], // eyes, nose, mouth
+	w: ["ffffff", 231], // eye highlights
+	p: ["f07c8a", 210], // tongue
+	f: ["4a5266", 240], // the window's border
+	k: ["0f1218", 233], // the window
+};
+const GREEN: [string, number] = ["7fd18b", 114];
+// dark pixels, left out without colour so the face keeps its features
+const DARK = "dwk";
 
-const WIDTH = 29;
-// the prompt sits at the bottom-right, like in the logo; its cursor blinks where the terminal can
-const PROMPT = { row: 13, col: 27 };
+const WIDTH = 32;
+// the prompt sits inside the window, on its background; its cursor blinks where the terminal can
+const PROMPT = { line: 12, col: 3 };
 
 export interface BannerOptions {
 	color: boolean;
@@ -61,35 +65,41 @@ export interface BannerOptions {
 
 /** The logo, with `lines` beside it (or under it, on a narrow terminal). */
 export function banner(lines: string[], o: BannerOptions): string {
-	const ink = (i: number) => {
-		const [hex, x256] = PALETTE[i]!;
-		if (!o.truecolor) return `38;5;${x256}`;
-		return `38;2;${parseInt(hex.slice(0, 2), 16)};${parseInt(hex.slice(2, 4), 16)};${parseInt(hex.slice(4), 16)}`;
+	const sgr = ([hex, x256]: [string, number], layer: 38 | 48) =>
+		o.truecolor
+			? `${layer};2;${parseInt(hex.slice(0, 2), 16)};${parseInt(hex.slice(2, 4), 16)};${parseInt(hex.slice(4), 16)}`
+			: `${layer};5;${x256}`;
+	const on = (p: string) => p !== "." && (o.color || !DARK.includes(p));
+	const cell = (top: string, bottom: string) => {
+		if (!on(top) && !on(bottom)) return " ";
+		if (!o.color) return on(top) ? (on(bottom) ? "█" : "▀") : "▄";
+		if (!on(top)) return `\x1b[${sgr(PALETTE[bottom]!, 38)}m▄\x1b[0m`;
+		const bg = on(bottom) ? `;${sgr(PALETTE[bottom]!, 48)}` : "";
+		return `\x1b[${sgr(PALETTE[top]!, 38)}${bg}m▀\x1b[0m`;
 	};
-	const paint = (code: string, s: string) =>
-		o.color ? `\x1b[${code}m${s}\x1b[0m` : s;
-	const green = ink(PALETTE.length - 1);
-	const art = ART.map((row, i) => {
+	const prompt = (ch: string, blink: boolean) =>
+		o.color
+			? `\x1b[1;${blink ? "5;" : ""}${sgr(GREEN, 38)};${sgr(PALETTE.k!, 48)}m${ch}\x1b[0m`
+			: ch;
+	const art: { out: string; width: number }[] = [];
+	for (let line = 0; line * 2 < PIXELS.length; line++) {
+		const top = PIXELS[line * 2]!;
+		const bottom = PIXELS[line * 2 + 1] ?? ".".repeat(top.length);
 		let out = "";
-		for (let j = 0; j < row.length; ) {
-			// a run of characters that share a colour
-			const k0 = INK[i]![j]!;
-			let k = j + 1;
-			while (k < row.length && INK[i]![k] === k0) k++;
-			out +=
-				k0 === " "
-					? row.slice(j, k)
-					: paint(ink(parseInt(k0, 36)), row.slice(j, k));
-			j = k;
+		for (let x = 0; x < top.length; x++) {
+			if (line === PROMPT.line && x === PROMPT.col) out += prompt("$", false);
+			else if (line === PROMPT.line && x === PROMPT.col + 1)
+				out += prompt("_", true);
+			else out += cell(top[x]!, bottom[x]!);
 		}
-		if (i === PROMPT.row)
-			out +=
-				" ".repeat(PROMPT.col - row.length) +
-				paint(`1;${green}`, "$") +
-				paint(`1;5;${green}`, "_");
-		return { out, width: i === PROMPT.row ? PROMPT.col + 2 : row.length };
-	});
-	const top = Math.floor((ART.length - lines.length) / 2);
+		// trailing blanks dropped; the width is what is left, so the text beside lines up
+		const trimmed = out.replace(/ +$/, "");
+		art.push({
+			out: trimmed,
+			width: top.length - (out.length - trimmed.length),
+		});
+	}
+	const top = Math.floor((art.length - lines.length) / 2);
 	if ((o.columns || 80) < WIDTH + 6 + Math.max(...lines.map((l) => l.length))) {
 		return (
 			[
