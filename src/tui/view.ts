@@ -323,11 +323,14 @@ function pathLines(
 ): string[] {
 	const rows = pathViews(s);
 	if (!rows.length) return [c.dim("PATH is empty")];
-	const dirW = Math.min(
-		60,
-		Math.max(9, ...rows.map((r) => tilde(r.dir, s.data.home).length)),
-	);
 	const byW = Math.min(32, Math.max(8, ...rows.map((r) => r.by.length)));
+	// the directory gets all the room the other columns leave: it is cut only when it can't fit
+	// ("   #  " before it, two spaces around ADDED BY, and room for "duplicate of #12")
+	const longest = Math.max(
+		9,
+		...rows.map((r) => [...tilde(r.dir, s.data.home)].length),
+	);
+	const dirW = Math.max(9, Math.min(longest, width - 6 - 2 - byW - 2 - 16));
 	const list = height - 1;
 	const cursor = cursorOf(s);
 	const start = windowStart(cursor, rows.length, list);

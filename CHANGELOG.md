@@ -2,6 +2,13 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## 0.3.3 (2026-10-11)
+
+### Fixed
+
+- `envhound edit`: the PATH table cut directories at 60 characters even on a wide screen; the
+  column now takes the room the screen has, and cuts a path only when it can't fit.
+
 ## 0.3.2 (2026-10-11)
 
 ### Fixed
