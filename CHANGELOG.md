@@ -2,6 +2,12 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Fixed
+
+- `.env` values holding the Unicode line or paragraph separator (U+2028, U+2029) were not read.
+
 ## 0.3.0 (2026-10-11)
 
 ### Added

@@ -129,7 +129,7 @@ describe("verified upgrades", () => {
 		expect(sumFor("ab  other.js\n", "envhound.js")).toBeUndefined();
 	});
 
-	// npm starts slowly, more than bun's 5 s default on a cold Windows runner
+	// npm starts slowly on a cold Windows runner
 	test("tarFile reads what npm pack writes", () => {
 		const dir = mkdtempSync(join(tmpdir(), "envhound-pack-"));
 		mkdirSync(join(dir, "dist"));

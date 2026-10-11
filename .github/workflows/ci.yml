@@ -45,7 +45,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
-      - run: bun test --coverage
+      # the tests start real processes (bash, PowerShell, npm), slow on a cold runner
+      - run: bun test --coverage --timeout 30000
       - run: bun run build
       - run: node dist/envhound.js --version
       # the release files must be reproducible from the source: the same build twice
