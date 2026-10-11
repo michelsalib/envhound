@@ -2,7 +2,7 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
-## Unreleased
+## 0.4.0 (2026-10-11)
 
 ### Added
 
@@ -16,7 +16,6 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
   that added it, which files of the same name it hides (and which are the same file through a
   symlink), and whether a fresh login shell would run another one. On Windows it tries each
   `PATHEXT` extension, as cmd does.
-
 - Standalone binaries for Linux and macOS (x64, arm64) and Windows (x64), built with
   `bun build --compile`: no Node or Bun needed. `install.sh` and `install.ps1` install one when
   neither is there, or with `ENVHOUND_BINARY=1`; `envhound upgrade` updates it, checked against
