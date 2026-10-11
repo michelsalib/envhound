@@ -1,5 +1,5 @@
 # Push a tag vX.Y.Z (after a PR that bumps package.json) to publish: npm (for npx/bunx/npm -g),
-# then a GitHub release for install.sh and install.ps1.
+# then a GitHub release for install.sh and install.ps1, with the standalone binaries.
 #
 # Three jobs, so untrusted work never holds a write token: tests on every OS, then a read-only
 # build, then a publish job that waits for approval in the `release` environment, attests the
@@ -32,6 +32,9 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: command -v zsh || (sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh)
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
@@ -54,12 +57,14 @@ jobs:
         run: test "${GITHUB_REF_NAME#v}" = "$(node -p 'require("./package.json").version')"
       - run: bun install --frozen-lockfile
       - run: bun run build
+      # cross-compiled here for every platform; CI checks each one runs on its own OS
+      - run: bun run build:bin
       - run: shellcheck install.sh
       - name: Release files
         run: |
           mkdir release
-          cp dist/envhound.js install.sh install.ps1 release/
-          (cd release && sha256sum envhound.js install.sh install.ps1 > SHA256SUMS)
+          cp dist/envhound.js dist/bin/* install.sh install.ps1 release/
+          (cd release && sha256sum * > SHA256SUMS)
           cat release/SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -94,10 +99,11 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      # npm gets the very file attested above; no scripts run here, so nothing rebuilds it
+      # npm gets the very files attested above; no scripts run here, so nothing rebuilds them.
+      # SHA256SUMS goes too: envhound upgrade checks a binary from GitHub against npm's copy
       - name: npm publish
         run: |
-          mkdir -p dist && cp release/envhound.js dist/envhound.js
+          mkdir -p dist && cp release/envhound.js release/SHA256SUMS dist/
           npm publish --provenance --access public --ignore-scripts
       - run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
         env:

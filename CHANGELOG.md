@@ -17,6 +17,13 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
   symlink), and whether a fresh login shell would run another one. On Windows it tries each
   `PATHEXT` extension, as cmd does.
 
+- Standalone binaries for Linux and macOS (x64, arm64) and Windows (x64), built with
+  `bun build --compile`: no Node or Bun needed. `install.sh` and `install.ps1` install one when
+  neither is there, or with `ENVHOUND_BINARY=1`; `envhound upgrade` updates it, checked against
+  `SHA256SUMS` on GitHub and the copy now published in the npm package. They are attested like the
+  other release files.
+- `envhound upgrade` names the command for Homebrew, Scoop and winget installs.
+
 ### Changed
 
 - `set` no longer adds the loading line when envhound's file is already loaded, wherever from.

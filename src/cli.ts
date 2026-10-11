@@ -60,12 +60,16 @@ import { findZsh, traceZsh } from "./trace/zsh.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import {
+	binaryName,
+	compiled,
 	fetchLatest,
 	installKind,
 	latestRelease,
 	newer,
 	type Release,
+	replaceBinary,
 	replaceScript,
+	selfPath,
 	updateNotice,
 	upgradeCommand,
 } from "./update.ts";
@@ -270,7 +274,7 @@ async function main(argv: string[]): Promise<number> {
 	)
 		notice = updateNotice(
 			pkg.version,
-			process.argv[1]!,
+			selfPath(),
 			locations(homedir(), env, false).updateState,
 		);
 	const tty = process.stdout.isTTY;
@@ -563,8 +567,14 @@ async function edit(
  * (see latestRelease). Nothing downloaded is ever run. Other installs get their own command.
  */
 async function upgrade(): Promise<number> {
-	const script = realpathSync(process.argv[1]!);
+	const script = realpathSync(selfPath());
 	const kind = installKind(script);
+	const binary = compiled();
+	const file = binary ? binaryName() : "envhound.js";
+	if (!file) {
+		console.error(`envhound: no envhound binary is built for this platform`);
+		return 1;
+	}
 	if (kind !== "standalone") {
 		console.log(
 			`This envhound was not installed with ${WINDOWS ? "install.ps1" : "install.sh"}. Update it with:\n  ${upgradeCommand(kind)}`,
@@ -573,7 +583,7 @@ async function upgrade(): Promise<number> {
 	}
 	let release: Release;
 	try {
-		release = await latestRelease(process.env);
+		release = await latestRelease(process.env, file);
 	} catch (e) {
 		console.error(
 			`envhound: ${e instanceof Error ? e.message : e}; nothing was changed`,
@@ -584,7 +594,8 @@ async function upgrade(): Promise<number> {
 		console.log(`envhound ${pkg.version} is the latest version`);
 		return 0;
 	}
-	replaceScript(script, release.script);
+	if (binary) replaceBinary(script, release.data);
+	else replaceScript(script, release.data);
 	console.log(
 		`upgraded envhound ${pkg.version} to ${release.version} in ${dirname(script)}`,
 	);

@@ -5,9 +5,11 @@
 # ENVHOUND_INSTALL_DIR  where to put `envhound` (default ~/.local/bin)
 # ENVHOUND_VERSION      a version such as 0.2.1 (default: the latest release)
 # ENVHOUND_BASE_URL     where envhound.js and SHA256SUMS are downloaded from: https://, or file:// (mirrors, tests)
+# ENVHOUND_BINARY=1     install the standalone binary even when Node or Bun is there
 # ENVHOUND_NO_COMPLETION=1  don't install shell completion
 #
-# envhound is one JavaScript file: it needs Node >= 20 or Bun, whichever is installed.
+# envhound is one small JavaScript file that runs on Node >= 20 or Bun. Without either, install.sh
+# installs the standalone binary instead (Linux and macOS, x64 and arm64), which needs nothing.
 set -eu
 
 # Everything runs from main, called on the last line: if the download is cut short,
@@ -39,14 +41,31 @@ case $base in
   *) fail "ENVHOUND_BASE_URL must start with https://, not $base" ;;
 esac
 
-# the runtime: Node >= 20 first, then Bun
-if command -v node >/dev/null 2>&1 &&
+# the runtime: Node >= 20 first, then Bun, else the binary
+if [ -n "${ENVHOUND_BINARY:-}" ]; then
+  runtime=binary
+elif command -v node >/dev/null 2>&1 &&
   node -e 'process.exit(+process.versions.node.split(".")[0] >= 20 ? 0 : 1)' 2>/dev/null; then
   runtime=node
 elif command -v bun >/dev/null 2>&1; then
   runtime=bun
 else
-  fail "envhound needs Node >= 20 or Bun. Install one (https://nodejs.org, https://bun.sh), or run it with npx envhound / bunx envhound"
+  runtime=binary
+fi
+
+file=envhound.js
+if [ "$runtime" = binary ]; then
+  case $(uname -s) in
+    Linux) os=linux ;;
+    Darwin) os=darwin ;;
+    *) fail "no envhound binary for $(uname -s); install Node >= 20 or Bun (https://nodejs.org, https://bun.sh)" ;;
+  esac
+  case $(uname -m) in
+    x86_64 | amd64) arch=x64 ;;
+    aarch64 | arm64) arch=arm64 ;;
+    *) fail "no envhound binary for $(uname -m); install Node >= 20 or Bun (https://nodejs.org, https://bun.sh)" ;;
+  esac
+  file=envhound-$os-$arch
 fi
 
 if command -v curl >/dev/null 2>&1; then
@@ -68,17 +87,17 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-download "$base/envhound.js" "$tmp/envhound.js" || fail "could not download $base/envhound.js"
+download "$base/$file" "$tmp/$file" || fail "could not download $base/$file"
 download "$base/SHA256SUMS" "$tmp/SHA256SUMS" || fail "could not download $base/SHA256SUMS"
-expected=$(awk '$2 == "envhound.js" || $2 == "*envhound.js" { print $1 }' "$tmp/SHA256SUMS")
-[ -n "$expected" ] || fail "SHA256SUMS has no entry for envhound.js"
-[ "$(sha256 "$tmp/envhound.js")" = "$expected" ] || fail "checksum mismatch for envhound.js; nothing was installed"
+expected=$(awk -v f="$file" '$2 == f || $2 == "*" f { print $1 }' "$tmp/SHA256SUMS")
+[ -n "$expected" ] || fail "SHA256SUMS has no entry for $file"
+[ "$(sha256 "$tmp/$file")" = "$expected" ] || fail "checksum mismatch for $file; nothing was installed"
 
 # the build starts with `#!/usr/bin/env node`
 if [ "$runtime" = bun ]; then
-  sed '1s|.*|#!/usr/bin/env bun|' "$tmp/envhound.js" >"$tmp/envhound"
+  sed '1s|.*|#!/usr/bin/env bun|' "$tmp/$file" >"$tmp/envhound"
 else
-  cp "$tmp/envhound.js" "$tmp/envhound"
+  cp "$tmp/$file" "$tmp/envhound"
 fi
 chmod 755 "$tmp/envhound"
 
@@ -87,7 +106,8 @@ mkdir -p "$dir"
 cp "$tmp/envhound" "$dir/.envhound.new"
 mv -f "$dir/.envhound.new" "$dir/envhound"
 
-say "installed envhound $("$dir/envhound" --version) in $dir (runs on $runtime)"
+if [ "$runtime" = binary ]; then how="standalone binary"; else how="runs on $runtime"; fi
+say "installed envhound $("$dir/envhound" --version) in $dir ($how)"
 
 # completion goes where shells load it by themselves; startup files are never edited
 if [ -z "${ENVHOUND_NO_COMPLETION:-}" ]; then

@@ -43,7 +43,8 @@ pathprepend() is defined in ~/.profile
 
 ## Install
 
-envhound is a single JavaScript file that runs on Node ≥ 20 or Bun, on Linux, macOS and Windows.
+envhound is a single JavaScript file that runs on Node ≥ 20 or Bun, on Linux, macOS and Windows. Without
+either, the installers fetch a standalone binary instead, which needs nothing.
 On Linux and macOS it reads the startup files of your login shell, **bash** or **zsh** (the default on
 macOS); with another one, such as fish, it shows what a bash login shell gets and says so; see
 [Status](#status).
@@ -62,6 +63,10 @@ less install.sh && sh install.sh
 gh attestation verify install.sh -R michelsalib/envhound   # optional: proves GitHub Actions built it
 ```
 
+The binaries are release files too (`envhound-linux-x64`, `envhound-linux-arm64`, `envhound-darwin-x64`,
+`envhound-darwin-arm64`, `envhound-windows-x64.exe`), listed in `SHA256SUMS` and attested like the rest;
+`envhound upgrade` checks a new one against that file on GitHub and against the copy in the npm package.
+
 On Windows, in PowerShell:
 
 ```powershell
@@ -70,11 +75,12 @@ irm https://github.com/michelsalib/envhound/releases/latest/download/install.ps1
 
 `install.sh` puts `envhound` in `~/.local/bin` (`ENVHOUND_INSTALL_DIR` to change it, `ENVHOUND_VERSION=0.2.0` to pin
 a version), checks it against the release's `SHA256SUMS`, and runs it on Node, or on Bun when there is no
-Node ≥ 20. It also installs bash completion where bash-completion loads it, and fish completion when fish
+Node ≥ 20. With neither, or with `ENVHOUND_BINARY=1`, it installs the standalone binary for your system
+(Linux and macOS, x64 and arm64; about 70 to 90 MB, as it carries the Bun runtime). It also installs bash completion where bash-completion loads it, and fish completion when fish
 is installed; it never edits your startup files, so for zsh it prints the line to add.
 
-`install.ps1` does the same on Windows: it puts `envhound.mjs` and an `envhound.cmd` launcher in
-`%LOCALAPPDATA%\Programs\envhound` (same `ENVHOUND_INSTALL_DIR` and `ENVHOUND_VERSION`), checks it against
+`install.ps1` does the same on Windows: it puts `envhound.mjs` and an `envhound.cmd` launcher (or, without
+Node or Bun, `envhound.exe`) in `%LOCALAPPDATA%\Programs\envhound` (same `ENVHOUND_INSTALL_DIR` and `ENVHOUND_VERSION`), checks it against
 `SHA256SUMS`, and prints the line for PowerShell completion and, if needed, the `envhound path add` command
 that puts it in your `Path`. It never edits your profile or your `Path` itself.
 
