@@ -2,12 +2,14 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
-## Unreleased
+## 0.4.2 (2026-10-11)
 
 ### Added
 
 - Each GitHub release also carries its signed build provenance as a file, `envhound.intoto.jsonl`,
   for tools that look at the release itself (OpenSSF Scorecard, slsa-verifier).
+- CodeQL analyses the sources and workflows on every pull request, and envhound holds the OpenSSF
+  Best Practices passing badge.
 
 ## 0.4.1 (2026-10-11)
 
