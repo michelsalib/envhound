@@ -36,6 +36,7 @@ for kind, arg in steps:
         deadline = time.monotonic() + 30
         while alive and arg not in seen[mark:]:
             if time.monotonic() > deadline:
+                json.dump(events, sys.stdout)
                 sys.exit("timed out waiting for " + arg)
             alive = pump(0.05)
         mark = len(seen)
