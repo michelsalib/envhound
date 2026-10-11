@@ -3,6 +3,7 @@ import {
 	chmodSync,
 	mkdirSync,
 	mkdtempSync,
+	realpathSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -12,7 +13,8 @@ import { why } from "../src/analyze.ts";
 import { renderWhy } from "../src/format.ts";
 import type { Trace } from "../src/model.ts";
 
-const root = mkdtempSync(join(tmpdir(), "envhound-why-"));
+// resolved: on macOS the temp dir is under /var, a symlink to /private/var
+const root = realpathSync(mkdtempSync(join(tmpdir(), "envhound-why-")));
 const dir = (name: string, ...files: string[]) => {
 	const d = join(root, name);
 	mkdirSync(d, { recursive: true });
