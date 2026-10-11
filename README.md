@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" width="128" height="128" alt="envhound logo: a hound with long ears, and a shell prompt">
+  <img src="assets/logo.svg" width="128" height="128" alt="envhound logo: a friendly hound peeking over a terminal window, paws on its edge, with a shell prompt inside">
 </p>
 
 <h1 align="center">envhound</h1>

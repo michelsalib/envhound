@@ -65,10 +65,10 @@ test("banner puts the text beside the logo, or under it on a narrow terminal", (
 		banner(["envhound 1.2.3"], { color: false, truecolor: false, columns: 40 }),
 	).toEndWith("\n\n  envhound 1.2.3\n");
 	expect(banner([], { color: true, truecolor: false })).toContain(
-		"\x1b[38;5;130m",
+		"\x1b[38;5;173m",
 	);
 	expect(banner([], { color: true, truecolor: true })).toContain(
-		"\x1b[38;2;168;82;26m",
+		"\x1b[38;2;224;138;58m",
 	);
 });
 
