@@ -2,7 +2,7 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
-## Unreleased
+## 0.4.1 (2026-10-11)
 
 ### Fixed
 
@@ -14,6 +14,7 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 
 ### Changed
 
+- The README shows a demo of `blame`, `why`, `set` and `edit`.
 - The note when `~/.zshrc` or `~/.zlogin` sets a variable after envhound's line is shorter.
 - After a change, the checks name directories under your home as `~/…`, and the command to apply a
   PATH change in the current shell uses `$HOME` (`export PATH="$HOME/bin:$PATH"`).
