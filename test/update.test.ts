@@ -129,6 +129,7 @@ describe("verified upgrades", () => {
 		expect(sumFor("ab  other.js\n", "envhound.js")).toBeUndefined();
 	});
 
+	// npm starts slowly on a cold Windows runner
 	test("tarFile reads what npm pack writes", () => {
 		const dir = mkdtempSync(join(tmpdir(), "envhound-pack-"));
 		mkdirSync(join(dir, "dist"));
@@ -137,7 +138,7 @@ describe("verified upgrades", () => {
 			join(dir, "package.json"),
 			JSON.stringify({ name: "pack-test", version: "1.0.0", files: ["dist"] }),
 		);
-		const r = spawnSync("npm", ["pack", "--silent"], {
+		const r = spawnSync("npm", ["pack", "--silent", "--ignore-scripts"], {
 			cwd: dir,
 			encoding: "utf8",
 			shell: process.platform === "win32",
@@ -148,7 +149,7 @@ describe("verified upgrades", () => {
 			script,
 		);
 		expect(tarFile(packed, "package/nope")).toBeUndefined();
-	});
+	}, 60_000);
 
 	test.skipIf(process.platform === "win32")(
 		"replaceScript keeps the file's mode and install.sh's choice of Bun",

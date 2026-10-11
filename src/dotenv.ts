@@ -35,7 +35,8 @@ export interface DotenvDoc {
 	trailingNewline: boolean;
 }
 
-const ENTRY = /^(\s*)(export\s+)?([^=\s#]+)(\s*)=(.*)$/;
+// [\s\S], not ".": a value may hold U+2028 or U+2029, which "." does not match
+const ENTRY = /^(\s*)(export\s+)?([^=\s#]+)(\s*)=([\s\S]*)$/;
 const KEY = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
 /** Index just past the closing quote `q` in `s` from `start`, or -1. Only double quotes have escapes. */
@@ -225,7 +226,7 @@ export function parseDotenv(text: string): DotenvDoc {
 			endLine = j + 1;
 			i = j;
 		} else {
-			const comment = /(^|\s+)#.*$/.exec(body);
+			const comment = /(^|\s+)#[\s\S]*$/.exec(body);
 			if (comment) trailing = comment[0];
 			value = body.slice(0, comment?.index ?? body.length).trim();
 			source = value;

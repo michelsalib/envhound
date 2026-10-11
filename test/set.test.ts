@@ -47,6 +47,7 @@ const TRICKY = [
 	"#hash",
 	"café ☕",
 	"back\\slash",
+	"line\u2028separator",
 ];
 
 describe("quoting round-trips", () => {
