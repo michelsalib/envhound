@@ -73,6 +73,14 @@ On Windows, in PowerShell:
 irm https://github.com/michelsalib/envhound/releases/latest/download/install.ps1 | iex
 ```
 
+With a package manager, which installs the standalone binary:
+
+```sh
+brew install michelsalib/envhound/envhound                    # Homebrew, macOS and Linux
+scoop bucket add envhound https://github.com/michelsalib/scoop-envhound
+scoop install envhound/envhound                               # Scoop, Windows
+```
+
 `install.sh` puts `envhound` in `~/.local/bin` (`ENVHOUND_INSTALL_DIR` to change it, `ENVHOUND_VERSION=0.2.0` to pin
 a version), checks it against the release's `SHA256SUMS`, and runs it on Node, or on Bun when there is no
 Node ≥ 20. With neither, or with `ENVHOUND_BINARY=1`, it installs the standalone binary for your system
