@@ -2,13 +2,12 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
-## Unreleased
+## 0.4.3 (2026-10-12)
 
 ### Changed
 
 - A friendlier logo: the hound now peeks over a terminal window, paws on its edge, with the prompt
   inside. The banner of `envhound --version` and `--help` shows the same dog.
-
 - Releases update the Homebrew tap and the Scoop bucket on their own: a pull request in each, merged
   once its install checks pass.
 
