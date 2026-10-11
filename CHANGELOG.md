@@ -2,6 +2,13 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Changed
+
+- Releases update the Homebrew tap and the Scoop bucket on their own: a pull request in each, merged
+  once its install checks pass.
+
 ## 0.4.2 (2026-10-12)
 
 ### Added
