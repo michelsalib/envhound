@@ -2,6 +2,21 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+
+- **zsh support.** When your login shell is zsh (the default on macOS), `list`, `blame`, `path` and
+  `edit` replay zsh's startup files (`.zshenv`, `.zprofile`, `.zshrc`, `.zlogin`, and the ones in
+  `/etc`), including what `path=(…)`, `path+=(…)`, `path[1,0]=(…)` and `typeset -U path` do to
+  `PATH`. `set`, `unset` and `path add|remove` load envhound's file from `~/.zprofile` (or
+  `$ZDOTDIR/.zprofile`), and say when `~/.zshrc` or `~/.zlogin` sets the same variable later.
+- `--shell bash|zsh` replays that shell instead of your login shell.
+
+### Changed
+
+- `set` no longer adds the loading line when envhound's file is already loaded, wherever from.
+
 ## 0.3.3 (2026-10-11)
 
 ### Fixed

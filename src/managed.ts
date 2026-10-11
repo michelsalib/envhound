@@ -64,6 +64,10 @@ export function loginFile(home: string): string {
 	return candidates.find((f) => existsSync(f)) ?? join(home, ".profile");
 }
 
+/** The file zsh reads for login shells: .zprofile in ZDOTDIR, else in HOME. */
+export const zshLoginFile = (home: string, zdotdir?: string) =>
+	join(zdotdir || home, ".zprofile");
+
 export interface ManagedLine {
 	raw: string;
 	kind: "var" | "path" | "other";

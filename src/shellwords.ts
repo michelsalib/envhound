@@ -31,6 +31,20 @@ function ansiC(s: string, i: number): [string, number] {
 			i += ch.length;
 			continue;
 		}
+		// zsh writes bytes it finds unprintable as \M-x (x + 128) and \C-x (control x)
+		const meta = s.startsWith("\\M-", i);
+		const ctrl = s.startsWith("\\C-", meta ? i + 3 : i);
+		if (meta || ctrl) {
+			const at = (meta ? i + 3 : i) + (ctrl ? 3 : 0);
+			const ch = s[at];
+			if (ch !== undefined) {
+				let b = ch.charCodeAt(0) & 255;
+				if (ctrl) b = ch === "?" ? 127 : b & 31;
+				bytes.push(meta ? b | 128 : b);
+				i = at + 1;
+				continue;
+			}
+		}
 		const c = s[i + 1]!;
 		const rest = s.slice(i + 2);
 		const octal = /^[0-7]{1,3}/.exec(s.slice(i + 1))?.[0];

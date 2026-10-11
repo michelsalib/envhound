@@ -4,3 +4,8 @@ dist/
 test/fixtures/home/*
 !test/fixtures/home/.bash_profile
 !test/fixtures/home/.bashrc
+test/fixtures/zhome/*
+!test/fixtures/zhome/.zshenv
+!test/fixtures/zhome/.zprofile
+!test/fixtures/zhome/.zshrc
+!test/fixtures/zhome/lib

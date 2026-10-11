@@ -31,10 +31,12 @@ export interface Assignment {
 
 export interface Trace {
 	/** windows: read from the registry, where names ignore case and PATH is split on ';'. */
-	shell: "bash" | "windows";
+	shell: "bash" | "zsh" | "windows";
 	/** Environment the fresh shell was started with. */
 	initial: Record<string, string>;
 	/** Exported environment of the fresh shell once its startup files are done. */
 	final: Record<string, string>;
 	assignments: Assignment[];
+	/** zsh: index of the first assignment made once ~/.zshrc or ~/.zlogin started, which run after ~/.zprofile. */
+	afterLogin?: number;
 }

@@ -55,6 +55,7 @@ import {
 } from "./set-windows.ts";
 import { traceBash } from "./trace/bash.ts";
 import { readRegistry, traceWindows, windowsTrace } from "./trace/windows.ts";
+import { findZsh, traceZsh } from "./trace/zsh.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import {
@@ -87,7 +88,8 @@ const HELP = `Usage:
   envhound path add DIR [--append] put DIR in PATH (at the front unless --append)
   envhound path remove DIR         remove a directory envhound added
                          These write ~/.config/envhound/env.sh, loaded by one line
-                         envhound adds to your login file; on Windows, your user
+                         envhound adds to your login file (~/.zprofile for zsh,
+                         else the one bash reads); on Windows, your user
                          variables (HKCU\\Environment), and unset and path remove
                          also the machine's (HKLM), asking for administrator
                          rights when needed. With --file FILE, set and
@@ -113,6 +115,7 @@ Options:
   --show-secrets      don't mask values of variables like *_TOKEN, *_KEY or *_PAT,
                       or passwords in URLs (postgres://user:********@host)
   --home DIR          act as if HOME were DIR (on Windows: only for backups)
+  --shell bash|zsh    replay this shell instead of your login shell ($SHELL)
   -f, --file FILE     set/unset: edit this .env file instead of the shell
   -y, --yes           set/unset/path: write without asking
   --dry-run           set/unset/path: show the diff, write nothing
@@ -123,8 +126,9 @@ Options:
   -h, --help          show this help
   -v, --version       show the version
 
-envhound replays a bash login shell from a clean environment with tracing on,
-so it only sees what startup files do. That runs your startup files once.
+envhound replays your login shell (bash or zsh; bash for any other) from a
+clean environment with tracing on, so it only sees what startup files do. That
+runs your startup files once.
 On Windows, envhound reads the registry instead: the machine's and your
 variables, as a new terminal gets them.
 
@@ -149,15 +153,23 @@ let notice: string | undefined;
 /** On Windows, variables come from the registry instead of bash startup files. */
 const WINDOWS = process.platform === "win32";
 
-/** envhound replays bash; another login shell (zsh, the default on macOS) may not get what bash gets. */
-const OTHER_SHELL =
-	!WINDOWS &&
-	loginShell(process.env) !== undefined &&
-	loginShell(process.env) !== "bash"
-		? loginShell(process.env)
+const LOGIN = WINDOWS ? undefined : loginShell(process.env);
+const TRACEABLE = ["bash", "zsh"] as const;
+type Traced = (typeof TRACEABLE)[number];
+/** The shell envhound replays: --shell, else the login shell when it can, else bash. */
+let traced: Traced = LOGIN === "zsh" ? "zsh" : "bash";
+/** A login shell envhound can't replay (fish…): it shows what bash gets instead, and says so. */
+let OTHER_SHELL =
+	LOGIN !== undefined && !TRACEABLE.includes(LOGIN as Traced)
+		? LOGIN
 		: undefined;
 const otherShellNote = () =>
-	`your login shell is ${OTHER_SHELL}, and envhound only reads bash startup files so far: this shows what a bash login shell gets`;
+	`your login shell is ${OTHER_SHELL}, and envhound only reads bash and zsh startup files so far: this shows what a bash login shell gets`;
+
+const traceShell = (home: string | undefined) =>
+	traced === "zsh"
+		? traceZsh({ home, zsh: findZsh(process.env) })
+		: traceBash({ home });
 
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DOTENV_NAME = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
@@ -193,6 +205,7 @@ async function main(argv: string[]): Promise<number> {
 			json: { type: "boolean" },
 			"show-secrets": { type: "boolean" },
 			home: { type: "string" },
+			shell: { type: "string" },
 			file: { type: "string", short: "f" },
 			yes: { type: "boolean", short: "y" },
 			"dry-run": { type: "boolean" },
@@ -232,9 +245,14 @@ async function main(argv: string[]): Promise<number> {
 		return 0;
 	}
 
+	if (values.shell !== undefined) {
+		if (!TRACEABLE.includes(values.shell as Traced))
+			return usage(`--shell takes ${TRACEABLE.join(" or ")}`);
+		traced = values.shell as Traced;
+		OTHER_SHELL = undefined;
+	}
 	const [command = "list", ...args] = positionals;
-	const trace = () =>
-		WINDOWS ? traceWindows() : traceBash({ home: values.home });
+	const trace = () => (WINDOWS ? traceWindows() : traceShell(values.home));
 	// only for a person at a terminal using their real home; never in scripts, CI or tests
 	const env = process.env;
 	if (
@@ -257,7 +275,7 @@ async function main(argv: string[]): Promise<number> {
 		color: tty && !process.env.NO_COLOR,
 		width: tty ? process.stdout.columns : undefined,
 		showSecrets: values["show-secrets"] ?? false,
-		shell: WINDOWS ? "windows" : "bash",
+		shell: WINDOWS ? "windows" : traced,
 	};
 	const print = (render: () => string, data: () => unknown) =>
 		console.log(values.json ? JSON.stringify(data(), null, 2) : render());
@@ -448,8 +466,7 @@ async function edit(
 		...new Set(ops.flatMap((op) => ("file" in op && op.file ? [op.file] : []))),
 	];
 	const planShellOps = () => {
-		if (!WINDOWS)
-			return planShell(shellOps, loc, traceBash({ home: values.home }));
+		if (!WINDOWS) return planShell(shellOps, loc, traceShell(values.home));
 		const reg = readRegistry();
 		return planRegistry(shellOps, reg, windowsTrace(reg, process.env));
 	};
@@ -469,7 +486,7 @@ async function edit(
 	};
 	if (OTHER_SHELL && shellOps.length)
 		plan.notes.unshift(
-			`your login shell is ${OTHER_SHELL}, but envhound only writes for bash so far (loaded from ${tilde(loginFile(loc.home), opts.home)}): ` +
+			`your login shell is ${OTHER_SHELL}, but envhound only writes for bash and zsh so far (loaded from ${tilde(loginFile(loc.home), opts.home)}): ` +
 				`${OTHER_SHELL} won't see these changes unless its startup files load that file`,
 		);
 
@@ -506,7 +523,7 @@ async function edit(
 	const fresh = OTHER_SHELL ? "a fresh bash login shell" : undefined;
 	const checks = WINDOWS
 		? verifyWindows(shellOps, traceWindows())
-		: verify(shellOps, traceBash({ home: values.home }), loc, fresh);
+		: verify(shellOps, traceShell(values.home), loc, fresh);
 	for (const check of checks)
 		console.log(
 			check.ok ? c.green(`✓ ${check.message}`) : c.yellow(`! ${check.message}`),

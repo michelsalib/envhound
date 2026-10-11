@@ -1,15 +1,27 @@
 // Replay a bash login shell from a clean environment with xtrace on, and turn
-// the trace into a list of assignments. The clean environment means we only
-// see what startup files do, never what the terminal passed in.
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
-import { join, resolve } from "node:path";
-import type { Assignment, Op, Trace, Via } from "../model.ts";
+// the trace into a list of assignments.
+import type { Op, Trace, Via } from "../model.ts";
 import { words } from "../shellwords.ts";
+import {
+	type Command,
+	MARK,
+	MARKS,
+	RECORD,
+	replay,
+	runShell,
+	SEP,
+	type Step,
+	type TraceOptions,
+} from "./shell.ts";
 
-const MARK = "\x1f";
-const SEP = "\x1e";
+export {
+	BASE_PATH,
+	canTrace,
+	NO_TRACE_ON_WINDOWS,
+	parseEnv0,
+	type TraceOptions,
+} from "./shell.ts";
+
 // bash repeats the first character of PS4 once per nesting level, which makes it a safe record marker.
 // The short fields come first, and the caller's file only inside a function, as "=" when it is the
 // same file (or "=" and the rest when it starts with it): bash 3.2 (macOS's /bin/bash) cuts the
@@ -25,94 +37,16 @@ const PS4 =
 	].join(SEP) +
 	SEP;
 const TRUNCATED = 99;
-// a record starts at a line that starts with the marker, repeated once per nesting level
-const RECORD = new RegExp(`\\n(?=${MARK})`);
-const MARKS = new RegExp(`^${MARK}+`);
-
-// env by its full path: `command -p env` would do, but bash 3.2 then runs it with the default PATH
-const ENV = ["/usr/bin/env", "/bin/env"].find((f) => existsSync(f)) ?? "env";
-
-export const BASE_PATH =
-	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-
-/** Native Windows has no bash startup files to replay: it keeps variables in the registry. */
-export const canTrace = process.platform !== "win32";
-export const NO_TRACE_ON_WINDOWS =
-	"bash startup files can't be traced on Windows; envhound reads the registry there";
-
-export interface TraceOptions {
-	/** Trace startup files as if HOME were this directory. */
-	home?: string;
-	timeoutMs?: number;
-}
 
 export function traceBash(opts: TraceOptions = {}): Trace {
-	if (!canTrace) throw new Error(NO_TRACE_ON_WINDOWS);
-	const home = resolve(opts.home ?? process.env.HOME ?? userInfo().homedir);
-	const user = process.env.USER ?? userInfo().username;
-	const initial: Record<string, string> = {
-		HOME: home,
-		USER: user,
-		LOGNAME: user,
-		SHELL: process.env.SHELL ?? "/bin/bash",
-		TERM: process.env.TERM ?? "xterm",
-		PATH: BASE_PATH,
-	};
-	const dir = mkdtempSync(join(tmpdir(), "envhound-"));
-	const envFile = join(dir, "env");
-	try {
-		// Startup files may print to stdout, so the final env goes to a file instead. Its path comes in through
-		// the environment, never spliced into the command (a ' in TMPDIR); env runs by its full path, so a
-		// PATH the startup files broke doesn't matter.
-		const r = spawnSync("bash", ["-lixc", `${ENV} -0 > "$ENVHOUND_ENV_FILE"`], {
-			env: { ...initial, PS4, ENVHOUND_ENV_FILE: envFile },
-			cwd: home,
-			stdio: ["ignore", "ignore", "pipe"],
-			timeout: opts.timeoutMs ?? 15_000,
-			// bytes: bash 3.2 cuts PS4 at a byte count, maybe inside a character
-			maxBuffer: 256 * 1024 * 1024,
-		});
-		if (r.error) {
-			if ((r.error as NodeJS.ErrnoException).code === "ETIMEDOUT")
-				throw new Error(
-					"bash startup files did not finish in time (is something waiting for input?)",
-				);
-			throw r.error;
-		}
-		let env = "";
-		try {
-			env = readFileSync(envFile, "utf8");
-		} catch {}
-		if (!env)
-			throw new Error(
-				`bash startup files did not finish (exit status ${r.status}); an 'exec' or 'exit' in a startup file stops the trace`,
-			);
-		const final = parseEnv0(env);
-		delete final.PS4;
-		delete final.ENVHOUND_ENV_FILE;
-		return parseTrace(r.stderr, initial, final);
-	} finally {
-		rmSync(dir, { recursive: true, force: true });
-	}
-}
-
-export function parseEnv0(s: string): Record<string, string> {
-	const env: Record<string, string> = {};
-	for (const entry of s.split("\0")) {
-		const eq = entry.indexOf("=");
-		if (eq > 0) env[entry.slice(0, eq)] = entry.slice(eq + 1);
-	}
-	return env;
-}
-
-interface Step {
-	name: string;
-	op: Op;
-	value: string;
-	/** Declared with `local` (or declare without -g): only local if inside a function. */
-	local: boolean;
-	/** `local X` / `declare X` with no value: changes scope, not value. */
-	bare: boolean;
+	const { initial, final, stderr } = runShell(
+		"bash",
+		"bash",
+		["-lixc"],
+		PS4,
+		opts,
+	);
+	return parseTrace(stderr, initial, final);
 }
 
 const ASSIGN = /^([A-Za-z_][A-Za-z0-9_]*)(\+?=)/;
@@ -174,10 +108,10 @@ export function parseTrace(
 	initial: Record<string, string>,
 	final: Record<string, string>,
 ): Trace {
-	const assignments: Assignment[] = [];
-	const values = new Map<string, string | undefined>(Object.entries(initial));
-	const frames = new Map<string, Set<string>>(); // function call -> its local names
+	return replay("bash", commands(stderr), parseCommand, initial, final);
+}
 
+function* commands(stderr: string | Buffer): Generator<Command> {
 	// Lines without the marker (shell warnings, multi-line values) belong to the previous record.
 	// one char per byte, so bash 3.2's byte count can be applied; fields are decoded once cut
 	const bytes = typeof stderr === "string" ? Buffer.from(stderr) : stderr;
@@ -197,42 +131,8 @@ export function parseTrace(
 							: { file: callerFile, line: Number(callerLine) },
 				}
 			: undefined;
-		const frame =
-			via?.kind === "function"
-				? `${via.name}@${via.at.file}:${via.at.line}`
-				: undefined;
-
-		for (const step of parseCommand(cmd)) {
-			let local = false;
-			if (frame) {
-				const names = frames.get(frame) ?? new Set();
-				frames.set(frame, names);
-				if (step.local) names.add(step.name);
-				local = names.has(step.name);
-			}
-			if (step.bare) continue;
-			const previous = local ? undefined : values.get(step.name);
-			const result =
-				step.op === "unset"
-					? undefined
-					: step.op === "+="
-						? (previous ?? "") + step.value
-						: step.value;
-			if (!local) values.set(step.name, result);
-			const { name, op, value } = step;
-			assignments.push({
-				name,
-				op,
-				value,
-				previous,
-				result,
-				at: { file, line: Number(line) },
-				via,
-				local,
-			});
-		}
+		yield { at: { file, line: Number(line) }, via, cmd };
 	}
-	return { shell: "bash", initial, final, assignments };
 }
 
 interface TraceFields {

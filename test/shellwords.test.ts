@@ -16,3 +16,10 @@ describe("words", () => {
 		expect(words(`"a \\"b\\"" c\\ d`)).toEqual(['a "b"', "c d"]));
 	test("empty quoted word", () => expect(words("''")).toEqual([""]));
 });
+
+test("zsh's \\M- and \\C- escapes are bytes", () => {
+	expect(words("$'caf\\M-C\\M-) \\M-b\\M-\\C-X\\M-\\C-U'")).toEqual([
+		"café ☕",
+	]);
+	expect(words("$'\\C-A\\C-?'")).toEqual(["\x01\x7f"]);
+});

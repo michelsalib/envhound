@@ -9,8 +9,8 @@ export interface RenderOptions {
 	/** Terminal width; undefined means never truncate (output is piped). */
 	width?: number;
 	showSecrets: boolean;
-	/** Where values come from: bash startup files (the default) or the Windows registry. */
-	shell?: "bash" | "windows";
+	/** Where values come from: bash (the default) or zsh startup files, or the Windows registry. */
+	shell?: "bash" | "zsh" | "windows";
 }
 
 /** Wording that depends on where values come from. */
@@ -27,7 +27,7 @@ function words(o: RenderOptions) {
 				fresh: "a fresh login shell",
 				gets: "a fresh login shell ends with",
 				system: "(login/shell)",
-				bySystem: "set by login or bash itself",
+				bySystem: `set by login or ${o.shell ?? "bash"} itself`,
 				sources: "any startup file",
 			};
 }

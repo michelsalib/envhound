@@ -42,6 +42,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
+      # the zsh tests need zsh: macOS has it, Ubuntu runners may not
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: command -v zsh || (sudo apt-get update && sudo apt-get install -y --no-install-recommends zsh)
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
