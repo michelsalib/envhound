@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { chain, pathEntries } from "./analyze.ts";
 import { parseDotenv, serializeDotenv, setKey, unsetKey } from "./dotenv.ts";
 import { type FileChange, readIfExists } from "./edit.ts";
-import { holdsSecret, where } from "./format.ts";
+import { holdsSecret, tilde, where } from "./format.ts";
 import {
 	addPath,
 	HEADER,
@@ -17,6 +17,7 @@ import {
 	serializeManaged,
 	setVar,
 	unsetVar,
+	zshLoginFile,
 } from "./managed.ts";
 import type { Assignment, Trace } from "./model.ts";
 import { shellQuote } from "./quote.ts";
@@ -49,11 +50,26 @@ export interface Plan {
 const fromEnvhound = (a: Assignment, loc: Locations) =>
 	a.at.file === loc.managed;
 
+/** The file that gets the line loading envhound's file: the login file of the shell traced. */
+export function hookFile(trace: Trace, home: string): string {
+	if (trace.shell !== "zsh") return loginFile(home);
+	// ZDOTDIR as zsh has it when it reads .zprofile: set by ~/.zshenv, or inherited
+	return zshLoginFile(
+		home,
+		chain(trace, "ZDOTDIR").at(-1)?.result ?? trace.initial.ZDOTDIR,
+	);
+}
+
 export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
 	const before = readIfExists(loc.managed);
 	let lines = parseManaged(before ?? HEADER, loc.home);
 	const notes: string[] = [];
 	const bashrc = join(loc.home, ".bashrc");
+	const login = hookFile(trace, loc.home);
+	// zsh: ~/.zshrc and ~/.zlogin run after ~/.zprofile, so their lines win over envhound's
+	const runsAfter = (a: Assignment) =>
+		trace.afterLogin !== undefined &&
+		trace.assignments.indexOf(a) >= trace.afterLogin;
 	const others = (name: string) =>
 		chain(trace, name).filter((a) => !fromEnvhound(a, loc));
 	const at = (as: Assignment[]) =>
@@ -64,7 +80,12 @@ export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
 			case "set": {
 				lines = setVar(lines, op.name, op.value);
 				const elsewhere = others(op.name);
-				if (elsewhere.length)
+				const later = elsewhere.filter(runsAfter);
+				if (later.length)
+					notes.push(
+						`${op.name} is also set at ${at(later)}, which runs after ${tilde(login, loc.home)}: that line wins over envhound's, remove it or change it there`,
+					);
+				else if (elsewhere.length)
 					notes.push(
 						`${op.name} is also set at ${at(elsewhere)}; envhound's line runs last, so it wins in login shells`,
 					);
@@ -109,8 +130,9 @@ export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
 	const after = serializeManaged(lines);
 	if (after !== before)
 		changes.push({ path: loc.managed, before, after, mode: 0o600 });
-	if (changes.length) {
-		const login = loginFile(loc.home);
+	// already loaded when its lines show up in the trace, maybe from a file the user chose
+	const loaded = trace.assignments.some((a) => fromEnvhound(a, loc));
+	if (changes.length && !loaded) {
 		const text = readIfExists(login);
 		if (!hasHook(text ?? "")) {
 			const sep = text && !text.endsWith("\n") ? "\n" : "";

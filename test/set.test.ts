@@ -146,6 +146,7 @@ describe("envhound set / unset / path end to end", () => {
 	};
 	const env = {
 		...process.env,
+		SHELL: "/bin/bash",
 		XDG_CONFIG_HOME: "/nonexistent",
 		XDG_STATE_HOME: "/nonexistent",
 	};
@@ -360,6 +361,7 @@ describe.skipIf(process.platform === "win32")(
 				encoding: "utf8",
 				env: {
 					...process.env,
+					SHELL: "/bin/bash",
 					XDG_CONFIG_HOME: "/nonexistent",
 					XDG_STATE_HOME: "/nonexistent",
 					...env,
@@ -368,19 +370,19 @@ describe.skipIf(process.platform === "win32")(
 			});
 		};
 
-		test("with zsh as login shell, set says bash is what it writes for and checks", () => {
-			const r = run({ SHELL: "/bin/zsh" }, "set", "EDITOR=vim", "--yes");
+		test("with fish as login shell, set says bash is what it writes for and checks", () => {
+			const r = run({ SHELL: "/usr/bin/fish" }, "set", "EDITOR=vim", "--yes");
 			expect(r.status).toBe(0);
 			expect(r.stdout).toContain(
-				"note: your login shell is zsh, but envhound only writes for bash so far",
+				"note: your login shell is fish, but envhound only writes for bash and zsh so far",
 			);
 			expect(r.stdout).toContain("✓ a fresh bash login shell now gets EDITOR");
 		});
 
-		test("with zsh as login shell, list warns on stderr and keeps --json clean", () => {
-			const r = run({ SHELL: "/bin/zsh" }, "list", "--json");
+		test("with fish as login shell, list warns on stderr and keeps --json clean", () => {
+			const r = run({ SHELL: "/usr/bin/fish" }, "list", "--json");
 			expect(r.status).toBe(0);
-			expect(r.stderr).toContain("your login shell is zsh");
+			expect(r.stderr).toContain("your login shell is fish");
 			expect(() => JSON.parse(r.stdout)).not.toThrow();
 		});
 

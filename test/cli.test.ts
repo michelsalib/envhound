@@ -17,7 +17,16 @@ beforeAll(() => {
 test.skipIf(!hasNode || onWindows)("built CLI runs on node", () => {
 	const r = spawnSync(
 		"node",
-		["dist/envhound.js", "--home", home, "--json", "blame", "API_TOKEN"],
+		[
+			"dist/envhound.js",
+			"--home",
+			home,
+			"--shell",
+			"bash",
+			"--json",
+			"blame",
+			"API_TOKEN",
+		],
 		{ cwd: root, encoding: "utf8" },
 	);
 	expect(r.status).toBe(0);

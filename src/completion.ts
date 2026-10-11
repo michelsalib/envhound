@@ -17,6 +17,7 @@ const FLAGS: Record<string, string> = {
 	"--json": "machine-readable output",
 	"--show-secrets": "don't mask secret values",
 	"--home": "act as if HOME were DIR",
+	"--shell": "trace bash or zsh instead of your login shell",
 	"--file": "set/unset: edit this .env file",
 	"--yes": "write without asking",
 	"--dry-run": "show the diff, write nothing",
@@ -30,7 +31,7 @@ export const SHELLS = ["bash", "zsh", "fish", "powershell"] as const;
 export type CompletionShell = (typeof SHELLS)[number];
 
 /** Flags that take a value: the next word is not a positional. */
-const TAKES_VALUE = new Set(["--home", "--file", "-f"]);
+const TAKES_VALUE = new Set(["--home", "--file", "-f", "--shell"]);
 
 const PATH_COMMANDS: Record<string, string> = {
 	add: "put a directory in PATH",
@@ -49,6 +50,8 @@ export function complete(
 	const norm = (s: string) => (opts.ignoreCase ? s.toUpperCase() : s);
 	const cur = words.at(-1) ?? "";
 	const before = words.slice(0, -1);
+	if (before.at(-1) === "--shell")
+		return ["bash", "zsh"].filter((s) => s.startsWith(cur));
 	if (TAKES_VALUE.has(before.at(-1) ?? "")) return []; // the shell script completes paths
 	const positionals = before.filter(
 		(w, i) => !w.startsWith("-") && !TAKES_VALUE.has(before[i - 1] ?? ""),

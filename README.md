@@ -44,8 +44,9 @@ pathprepend() is defined in ~/.profile
 ## Install
 
 envhound is a single JavaScript file that runs on Node ≥ 20 or Bun, on Linux, macOS and Windows.
-On Linux and macOS it reads **bash** startup files only, for now: if your login shell is zsh (the default on
-macOS) or fish, envhound shows what a bash login shell gets and says so; see [Status](#status).
+On Linux and macOS it reads the startup files of your login shell, **bash** or **zsh** (the default on
+macOS); with another one, such as fish, it shows what a bash login shell gets and says so; see
+[Status](#status).
 
 ```sh
 npx envhound blame PATH        # or: bunx envhound blame PATH, nothing to install
@@ -132,8 +133,10 @@ This shell is unchanged. To apply it here too, run:
 ```
 
 - envhound writes **its own file**, `~/.config/envhound/env.sh` (mode 600), and never rewrites your startup
-  files. The first time, it appends one line to your login file (`~/.bash_profile`, `~/.bash_login` or
-  `~/.profile`, whichever bash reads) to load it. Being last, envhound's values win.
+  files. The first time, it appends one line to your login file to load it: for bash `~/.bash_profile`,
+  `~/.bash_login` or `~/.profile`, whichever bash reads; for zsh `~/.zprofile` (in `$ZDOTDIR` if you set
+  one). Being last, envhound's values win, except over `~/.zshrc` and `~/.zlogin`, which zsh runs after
+  `~/.zprofile`: envhound tells you when one of them sets the same variable.
 - Every change is shown as a **diff** (secrets masked) and confirmed; `--yes` skips the question,
   `--dry-run` only shows it. Changed files are **backed up** to `~/.local/state/envhound/backups/` (the 50
   most recent are kept, since they may hold secrets).
@@ -233,9 +236,11 @@ offers the variables of the shell you are typing in.
 
 ## How it works
 
-envhound starts `bash -lixc` with a clean environment and a custom `PS4`, so bash's own trace reports the
-file, line and function of every command its startup files run. envhound parses the assignments from that
-trace and compares them with the environment the shell ends up with.
+envhound starts `bash -lixc` (or `zsh -lixc`) with a clean environment and a custom `PS4`, so the shell's
+own trace reports the file, line and function of every command its startup files run. envhound parses the
+assignments from that trace and compares them with the environment the shell ends up with. For zsh it also
+replays what `path=(…)`, `path+=(…)` and `typeset -U path` do to `PATH`. `--shell bash|zsh` replays the
+other shell than your `$SHELL`.
 
 This runs your startup files once, as opening a terminal would. Startup files that `exec` another
 program or wait for input stop the trace (envhound gives up after 15 seconds).
@@ -251,13 +256,13 @@ difference between this terminal and a new one.
 
 ## Status
 
-- **Linux and macOS**: bash startup files. With another login shell, such as zsh (the default on macOS) or
-  fish, envhound still replays bash and warns you: `list`, `blame` and `path` show what a bash login shell
-  gets, and `set`, `unset` and `path add|remove` write a file that only reaches your shell if its startup
-  files load `~/.profile` (or `~/.bash_profile`).
+- **Linux and macOS**: bash and zsh startup files. With another login shell, such as fish, envhound replays
+  bash and warns you: `list`, `blame` and `path` show what a bash login shell gets, and `set`, `unset` and
+  `path add|remove` write a file that only reaches your shell if its startup files load `~/.profile` (or
+  `~/.bash_profile`).
 - **Windows**: the registry, in PowerShell or cmd. In WSL, envhound reads bash startup files, as on Linux.
 
-Planned: zsh and fish, PowerShell profiles, and a `.deb`.
+Planned: fish, PowerShell profiles, and a `.deb`.
 
 ## Development
 
