@@ -20,6 +20,7 @@ test("Homebrew, Scoop and winget files point at the release's binaries", () => {
 		expect(formula).toContain(`sha256 "${String(i).repeat(64)}"`);
 	}
 	expect(formula).toContain('version "1.2.3"');
+	expect(formula).toContain('chmod 0755, bin/"envhound"');
 
 	const scoop = JSON.parse(files["envhound.json"]!);
 	expect(scoop.version).toBe("1.2.3");
