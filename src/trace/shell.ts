@@ -1,7 +1,7 @@
 // What tracing bash and zsh share: starting the login shell from a clean environment with xtrace on,
 // and replaying the assignments its trace shows. The clean environment means we only see what
 // startup files do, never what the terminal passed in.
-import { spawnSync } from "node:child_process";
+import { type IOType, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
@@ -64,14 +64,23 @@ export function runShell(
 		// Startup files may print to stdout, so the final env goes to a file instead. Its path comes in through
 		// the environment, never spliced into the command (a ' in TMPDIR); env runs by its full path, so a
 		// PATH the startup files broke doesn't matter.
-		const r = spawnSync(shell, [...flags, `${ENV} -0 > "$ENVHOUND_ENV_FILE"`], {
+		const options = {
 			env: { ...initial, PS4: ps4, ENVHOUND_ENV_FILE: envFile },
 			cwd: home,
-			stdio: ["ignore", "ignore", "pipe"],
+			stdio: ["ignore", "ignore", "pipe"] as IOType[],
+			// a session of its own, without the terminal: startup files can't read keys from it
+			// (zsh's compinit asks about insecure directories) or take it over for job control.
+			// Node and Bun honour it in spawnSync too, though its type only lists it for spawn.
+			detached: true,
 			timeout: opts.timeoutMs ?? 15_000,
 			// bytes: bash 3.2 cuts PS4 at a byte count, maybe inside a character
 			maxBuffer: 256 * 1024 * 1024,
-		});
+		};
+		const r = spawnSync(
+			shell,
+			[...flags, `${ENV} -0 > "$ENVHOUND_ENV_FILE"`],
+			options,
+		);
 		if (r.error) {
 			const code = (r.error as NodeJS.ErrnoException).code;
 			if (code === "ETIMEDOUT")

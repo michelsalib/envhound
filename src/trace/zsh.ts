@@ -39,8 +39,7 @@ export function traceZsh(opts: ZshOptions = {}): Trace {
 	const { initial, final, stderr } = runShell(
 		"zsh",
 		opts.zsh ?? "zsh",
-		// no job control: an interactive zsh opens the terminal and takes it over, leaving envhound
-		// in the background, stopped as soon as it asks a question or starts the editor
+		// no job control: without a terminal (see runShell), zsh would warn about it in the trace
 		["-o", "promptsubst", "+o", "monitor", "-lixc"],
 		PS4,
 		opts,

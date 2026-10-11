@@ -286,8 +286,9 @@ describe.skipIf(!canTrace || !zsh)("envhound set with zsh", () => {
 	});
 });
 
-// A traced interactive zsh opens the terminal for job control: it must not keep it, or envhound
-// is stopped (SIGTTOU) the moment it asks a question.
+// The traced shell must not reach the terminal: an interactive zsh takes it over for job control,
+// and envhound is then stopped (SIGTTOU) the moment it asks a question; startup files can also
+// ask questions there themselves, and wait.
 describe.skipIf(!canTrace || !zsh || !Bun.which("python3"))(
 	"zsh at a real terminal",
 	() => {
@@ -299,6 +300,11 @@ describe.skipIf(!canTrace || !zsh || !Bun.which("python3"))(
 				cpSync(join(import.meta.dir, "fixtures", "zhome"), home, {
 					recursive: true,
 				});
+				// a question on the terminal, as compinit asks about insecure directories
+				writeFileSync(
+					join(home, ".zshrc"),
+					`${readFileSync(join(home, ".zshrc"), "utf8")}read -q 'REPLY?go on? ' || true\n`,
+				);
 				const r = spawnSync(
 					"python3",
 					[

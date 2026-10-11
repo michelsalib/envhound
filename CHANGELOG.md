@@ -8,7 +8,9 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 
 - With zsh as login shell, `set`, `unset`, `path add|remove` and `edit` stopped (suspended by the
   terminal) as soon as they asked a question or opened the editor: the traced interactive zsh took
-  the terminal over for job control. envhound now traces zsh without job control.
+  the terminal over for job control. Startup files could also ask questions on the terminal while
+  envhound traced them (zsh's compinit about insecure directories), and wait for an answer. The
+  traced shell now runs in a session of its own, without the terminal.
 
 ### Changed
 
