@@ -15,9 +15,10 @@ Only the latest release gets security fixes.
 
 These are worth knowing when you judge what counts as a vulnerability:
 
-- **It runs your startup files.** `envhound list`, `blame` and `path` start `bash -lixc` with a clean
-  environment, so your `~/.bash_profile`, `~/.bashrc` and what they source run once, as when you
-  open a terminal.
+- **It runs your startup files.** `envhound list`, `blame`, `why` and `path` start your login shell
+  (`bash -lixc` or `zsh -lixc`) with a clean environment, so your `~/.bash_profile`, `~/.bashrc`,
+  `~/.zprofile`, `~/.zshrc` and what they source run once, as when you open a terminal. That shell
+  runs without access to your terminal.
 - **It writes only after you confirm** (or pass `--yes`). Shell changes go to its own file,
   `~/.config/envhound/env.sh` (mode 600), plus one line that loads it in your login file; `.env`
   files only with `--file` or `edit`. Every changed file is backed up first. On Windows it writes
@@ -30,12 +31,12 @@ These are worth knowing when you judge what counts as a vulnerability:
 ## Verifying a release
 
 Every release is built by GitHub Actions from the tagged commit, and its files carry signed build
-provenance:
+provenance, also attached to the release as `envhound.intoto.jsonl`:
 
 ```sh
-# the GitHub release files
+# the GitHub release files: envhound.js, the installers and the standalone binaries
 gh attestation verify envhound.js -R michelsalib/envhound
-sha256sum --check SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
 # the npm package
 npm audit signatures
 ```
@@ -45,4 +46,8 @@ gives the same `dist/envhound.js` as the release's `SHA256SUMS` (with the Bun ve
 `.bun-version`).
 
 `envhound upgrade` checks this for you before replacing itself: the file must match the release's
-`SHA256SUMS` and be byte for byte the one in the npm package of the same version.
+`SHA256SUMS` and be byte for byte the one in the npm package of the same version. A standalone
+binary must match `SHA256SUMS` on GitHub and the copy of `SHA256SUMS` published in the npm package.
+
+The sources are analysed by CodeQL on every pull request, and the project's practices are tracked by
+[OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/michelsalib/envhound).
