@@ -1,4 +1,5 @@
-import { statSync } from "node:fs";
+import { accessSync, constants, realpathSync, statSync } from "node:fs";
+import { join } from "node:path";
 import type { Assignment, Location, Trace } from "./model.ts";
 
 export type Status = "effective" | "not-effective" | "not-exported" | "unset";
@@ -224,4 +225,95 @@ export function pathEntries(t: Trace, path: string): PathEntry[] {
 			addedBy: by === "initial" ? undefined : by,
 		};
 	});
+}
+
+export interface CommandMatch {
+	/** The file that runs. */
+	file: string;
+	/** Where a symlink leads, when the file is one. */
+	target?: string;
+	entry: PathEntry;
+}
+
+export interface WhyReport {
+	command: string;
+	/** In PATH order: the first one runs, the others are shadowed. */
+	matches: CommandMatch[];
+	/** What a fresh login shell runs, when that differs from matches[0]. */
+	fresh?: CommandMatch | null;
+}
+
+/** The files `command` names in `dir`: on Windows also with each PATHEXT extension, as cmd tries them. */
+function candidates(
+	t: Trace,
+	dir: string,
+	command: string,
+	pathext: string,
+): string[] {
+	if (t.shell !== "windows") return [join(dir, command)];
+	const exts = pathext.split(";").filter(Boolean);
+	const hasExt = exts.some((e) =>
+		command.toUpperCase().endsWith(e.toUpperCase()),
+	);
+	return [
+		...(hasExt ? [command] : []),
+		...exts.map((e) => command + e.toLowerCase()),
+	].map((f) => join(dir, f));
+}
+
+function runnable(t: Trace, file: string): boolean {
+	try {
+		if (!statSync(file).isFile()) return false;
+		if (t.shell !== "windows") accessSync(file, constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Every file `command` resolves to in `path`, in the order the shell searches. */
+export function resolveCommand(
+	t: Trace,
+	command: string,
+	path: string,
+	pathext = ".COM;.EXE;.BAT;.CMD",
+): CommandMatch[] {
+	return pathEntries(t, path)
+		.filter((e) => e.dir !== "" && !e.duplicateOf)
+		.flatMap((entry) =>
+			candidates(t, entry.dir, command, pathext)
+				.filter((f) => runnable(t, f))
+				.map((file) => {
+					let target: string | undefined;
+					try {
+						target = realpathSync(file);
+					} catch {}
+					return { file, target: target === file ? undefined : target, entry };
+				}),
+		);
+}
+
+/** Which file `command` runs in this shell, which ones it hides, and what a fresh login shell runs. */
+export function why(
+	t: Trace,
+	command: string,
+	env: Record<string, string | undefined>,
+): WhyReport {
+	const pathext = lookup(t, env, "PATHEXT");
+	const matches = resolveCommand(
+		t,
+		command,
+		lookup(t, env, "PATH") ?? "",
+		pathext,
+	);
+	const fresh =
+		resolveCommand(t, command, lookup(t, t.final, "PATH") ?? "", pathext)[0] ??
+		null;
+	const same = (a?: CommandMatch | null, b?: CommandMatch | null) =>
+		dirKey(t)(a?.file ?? "") === dirKey(t)(b?.file ?? "");
+	return {
+		command,
+		matches,
+		fresh: same(fresh, matches[0]) ? undefined : fresh,
+	};
 }
