@@ -2,8 +2,8 @@
 #   irm https://github.com/michelsalib/envhound/releases/latest/download/install.ps1 | iex
 #
 # ENVHOUND_INSTALL_DIR  where to put envhound (default %LOCALAPPDATA%\Programs\envhound)
-# ENVHOUND_VERSION      a version such as 0.2.0 (default: the latest release)
-# ENVHOUND_BASE_URL     where envhound.js and SHA256SUMS are downloaded from (mirrors, tests)
+# ENVHOUND_VERSION      a version such as 0.2.1 (default: the latest release)
+# ENVHOUND_BASE_URL     where envhound.js and SHA256SUMS are downloaded from: https://, or file: (mirrors, tests)
 #
 # envhound is one JavaScript file: it needs Node >= 20 or Bun, whichever is installed.
 # Like install.sh, it never edits your profile or your Path: it prints what to run.
@@ -21,9 +21,12 @@ function Fail($message) {
 $repo = 'michelsalib/envhound'
 $dir = if ($env:ENVHOUND_INSTALL_DIR) { $env:ENVHOUND_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\envhound' }
 $version = if ($env:ENVHOUND_VERSION) { $env:ENVHOUND_VERSION -replace '^v', '' } else { 'latest' }
+if ($version -ne 'latest' -and $version -notmatch '^\d+\.\d+\.\d+$') { Fail "ENVHOUND_VERSION must look like 0.2.1, not $version" }
 $base = if ($env:ENVHOUND_BASE_URL) { $env:ENVHOUND_BASE_URL }
   elseif ($version -eq 'latest') { "https://github.com/$repo/releases/latest/download" }
   else { "https://github.com/$repo/releases/download/v$version" }
+# https only (file: for local mirrors and tests)
+if ($base -notlike 'https://*' -and $base -notlike 'file:*') { Fail "ENVHOUND_BASE_URL must start with https://, not $base" }
 
 # the runtime: Node >= 20 first, then Bun
 $runtime = $null

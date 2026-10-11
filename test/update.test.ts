@@ -407,6 +407,42 @@ describe.skipIf(process.platform === "win32")(
 			expect(bad.stderr).toContain("nothing was changed");
 		});
 
+		test("refuses plain http and a malformed version", () => {
+			const home = mkdtempSync(join(tmpdir(), "envhound-bin-"));
+			const env = { ENVHOUND_INSTALL_DIR: join(home, "bin"), ...homeEnv(home) };
+			const http = run("sh", [join(root, "install.sh")], {
+				...env,
+				ENVHOUND_BASE_URL: "http://example.com",
+			});
+			expect(http.status).toBe(1);
+			expect(http.stderr).toContain("must start with https://");
+			const version = run("sh", [join(root, "install.sh")], {
+				...env,
+				ENVHOUND_VERSION: "1.2; echo pwned",
+			});
+			expect(version.status).toBe(1);
+			expect(version.stderr).toContain("must look like 0.2.1");
+			expect(existsSync(join(home, "bin"))).toBe(false);
+		});
+
+		test("a download cut short runs nothing", () => {
+			const text = readFileSync(join(root, "install.sh"), "utf8");
+			const home = mkdtempSync(join(tmpdir(), "envhound-bin-"));
+			const r = spawnSync("sh", ["-s"], {
+				input: text.slice(0, Math.floor(text.length * 0.9)),
+				encoding: "utf8",
+				env: {
+					...process.env,
+					ENVHOUND_BASE_URL: base,
+					ENVHOUND_INSTALL_DIR: join(home, "bin"),
+					...homeEnv(home),
+				},
+			});
+			expect(r.status).not.toBe(0);
+			expect(r.stdout).toBe("");
+			expect(existsSync(join(home, "bin"))).toBe(false);
+		});
+
 		test("refuses a download that doesn't match SHA256SUMS", () => {
 			const bad = mkdtempSync(join(tmpdir(), "envhound-bad-"));
 			writeFileSync(

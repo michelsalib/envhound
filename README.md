@@ -52,6 +52,14 @@ npm install -g envhound        # or: bun add -g envhound
 curl -fsSL https://github.com/michelsalib/envhound/releases/latest/download/install.sh | sh
 ```
 
+To pin a version, or to read the script before running it:
+
+```sh
+curl -fsSL https://github.com/michelsalib/envhound/releases/download/v0.2.1/install.sh -o install.sh
+less install.sh && sh install.sh
+gh attestation verify install.sh -R michelsalib/envhound   # optional: proves GitHub Actions built it
+```
+
 On Windows, in PowerShell:
 
 ```powershell
