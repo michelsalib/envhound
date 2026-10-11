@@ -739,8 +739,9 @@ describe.skipIf(!binaryName())("standalone binary: install and upgrade", () => {
 			HOME: home,
 		});
 		expect(u.stderr).toBe("");
+		// native: also expands Windows short names (RUNNER~1), as the binary's own path does
 		expect(u.stdout).toContain(
-			`upgraded envhound ${pkg.version} to 9.9.9 in ${realpathSync(dir)}`,
+			`upgraded envhound ${pkg.version} to 9.9.9 in ${realpathSync.native(dir)}`,
 		);
 		expect(existsSync(`${exe}.old`)).toBe(windows);
 		expect(run(exe, ["--version"]).stdout.trim()).toBe(pkg.version);
