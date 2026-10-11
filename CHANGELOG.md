@@ -2,7 +2,9 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
-## 0.3.0 (2026-10-11)
+## 0.3.1 (2026-10-11)
+
+0.3.0 was tagged but never published; everything it was to contain is here.
 
 ### Added
 
