@@ -328,10 +328,11 @@ describe.skipIf(!canTrace || !zsh || !Bun.which("python3"))(
 						},
 					},
 				);
-				expect(r.stderr).toBe("");
-				const out = (JSON.parse(r.stdout) as [number, string][])
+				const out = (JSON.parse(r.stdout || "[]") as [number, string][])
 					.map(([, text]) => text)
 					.join("");
+				// the screen too, when the prompt never came
+				expect({ stderr: r.stderr, out }).toMatchObject({ stderr: "" });
 				expect(out).toContain("✓ a fresh login shell now gets MSG");
 			},
 			90_000,
