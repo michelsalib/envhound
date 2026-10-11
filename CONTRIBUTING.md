@@ -31,8 +31,11 @@ On Windows, the tests read and write a scratch registry key instead of tracing b
 2. Once it's merged, tag the merge commit and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The release workflow tests on every OS and builds the files, then waits for approval in the
    `release` environment. Approve it to publish to npm and create the GitHub release.
-4. Package managers: `bun scripts/packages.ts X.Y.Z` writes, from the release's `SHA256SUMS`, the
-   Homebrew formula (`Formula/envhound.rb`, for the `michelsalib/homebrew-envhound` tap), the Scoop
-   manifest (`envhound.json`, for the `michelsalib/scoop-envhound` bucket) and the winget manifests
-   (a pull request to `microsoft/winget-pkgs`) under `dist/packages/`. Scoop's `autoupdate` can also
-   update its manifest on its own.
+4. Package managers: the publish job then opens a pull request in the Homebrew tap
+   (`michelsalib/homebrew-envhound`) and in the Scoop bucket (`michelsalib/scoop-envhound`), each
+   merged by its own install CI. It uses `PACKAGES_TOKEN`, a secret of the `release` environment: a
+   fine-grained token limited to those two repositories, with Contents and Pull requests (read and
+   write). Without it the job only warns, and the update is by hand:
+   `bun scripts/packages.ts X.Y.Z SHA256SUMS dist/packages`, then
+   `sh scripts/update-package-repos.sh X.Y.Z dist/packages`. `scripts/packages.ts` also writes the
+   winget manifests (a pull request to `microsoft/winget-pkgs`, not automated).

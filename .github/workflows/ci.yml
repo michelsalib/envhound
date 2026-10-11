@@ -74,7 +74,7 @@ jobs:
           dist/bin/$bin --version
           dist/bin/$bin why node
           dist/bin/$bin list > /dev/null
-      - run: shellcheck install.sh
+      - run: shellcheck install.sh scripts/update-package-repos.sh
         if: runner.os == 'Linux'
       - name: PSScriptAnalyzer
         if: runner.os == 'Windows'
