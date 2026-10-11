@@ -7,6 +7,7 @@ import { type FileChange, readIfExists } from "./edit.ts";
 import { holdsSecret, tilde, where } from "./format.ts";
 import {
 	addPath,
+	dqDir,
 	HEADER,
 	HOOK,
 	hasHook,
@@ -83,7 +84,7 @@ export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
 				const later = elsewhere.filter(runsAfter);
 				if (later.length)
 					notes.push(
-						`${op.name} is also set at ${at(later)}, which runs after ${tilde(login, loc.home)}: that line wins over envhound's, remove it or change it there`,
+						`${op.name} is also set at ${at(later)}, which runs after ${tilde(login, loc.home)} and wins: remove that line or change it there`,
 					);
 				else if (elsewhere.length)
 					notes.push(
@@ -253,10 +254,14 @@ export function verify(
 	});
 }
 
-/** Commands that make the same change in the current shell, which envhound cannot reach. Secret values are left out unless `showSecrets`. */
+/**
+ * Commands that make the same change in the current shell, which envhound cannot reach. Secret values
+ * are left out unless `showSecrets`; directories under `home` are written with $HOME.
+ */
 export function currentShellCommands(
 	ops: EditOp[],
 	showSecrets = false,
+	home = "",
 ): string[] {
 	// biome-ignore lint/suspicious/useIterableCallbackReturn: the switch covers every op kind, and each case returns
 	return ops.flatMap((op) => {
@@ -272,8 +277,8 @@ export function currentShellCommands(
 			case "path-add":
 				return [
 					op.position === "front"
-						? `export PATH=${shellQuote(op.dir)}:"$PATH"`
-						: `export PATH="$PATH":${shellQuote(op.dir)}`,
+						? `export PATH="${dqDir(op.dir, home)}:$PATH"`
+						: `export PATH="$PATH:${dqDir(op.dir, home)}"`,
 				];
 			case "path-remove":
 				return [];

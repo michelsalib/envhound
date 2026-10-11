@@ -285,3 +285,56 @@ describe.skipIf(!canTrace || !zsh)("envhound set with zsh", () => {
 		expect(envhound(fixture, "--shell", "fish", "list").status).toBe(2);
 	});
 });
+
+// A traced interactive zsh opens the terminal for job control: it must not keep it, or envhound
+// is stopped (SIGTTOU) the moment it asks a question.
+describe.skipIf(!canTrace || !zsh || !Bun.which("python3"))(
+	"zsh at a real terminal",
+	() => {
+		zshTest(
+			"set asks, then writes",
+			() => {
+				const root = join(import.meta.dir, "..");
+				const home = mkdtempSync(join(tmpdir(), "envhound-zhome-"));
+				cpSync(join(import.meta.dir, "fixtures", "zhome"), home, {
+					recursive: true,
+				});
+				const r = spawnSync(
+					"python3",
+					[
+						"-I",
+						join(root, "scripts", "pty.py"),
+						"100",
+						"30",
+						JSON.stringify([
+							["wait", "[y/N]"],
+							["send", "y\r"],
+						]),
+						process.execPath,
+						join(root, "src", "cli.ts"),
+						"--home",
+						home,
+						"set",
+						"MSG=hi",
+					],
+					{
+						encoding: "utf8",
+						timeout: 60_000,
+						env: {
+							...process.env,
+							SHELL: zsh!,
+							XDG_CONFIG_HOME: "/nonexistent",
+							XDG_STATE_HOME: "/nonexistent",
+						},
+					},
+				);
+				expect(r.stderr).toBe("");
+				const out = (JSON.parse(r.stdout) as [number, string][])
+					.map(([, text]) => text)
+					.join("");
+				expect(out).toContain("✓ a fresh login shell now gets MSG");
+			},
+			90_000,
+		);
+	},
+);
