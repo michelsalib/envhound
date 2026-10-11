@@ -90,9 +90,12 @@ _envhound() {
         --home) COMPREPLY=($(compgen -d -- "$cur")); return ;;
         --file|-f) COMPREPLY=($(compgen -f -- "$cur")); return ;;
     esac
+    # a loop, not "\${COMP_WORDS[@]:1:COMP_CWORD}": macOS's bash 3.2 joins that slice into one word
+    local i args=()
+    for ((i = 1; i <= COMP_CWORD; i++)); do args+=("\${COMP_WORDS[i]}"); done
     local IFS=$'\\n'
-    COMPREPLY=($(envhound __complete "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null | cut -f1))
-    [[ \${COMPREPLY[0]} == *= ]] && compopt -o nospace
+    COMPREPLY=($(envhound __complete "\${args[@]}" 2>/dev/null | cut -f1))
+    [[ \${COMPREPLY[0]} == *= ]] && compopt -o nospace 2>/dev/null
 }
 complete -o default -F _envhound envhound
 `;

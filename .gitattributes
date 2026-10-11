@@ -1,0 +1,3 @@
+# LF everywhere, Windows checkouts included: Biome checks formatting, and install.sh must stay LF
+* text=auto eol=lf
+*.trace binary

@@ -2,7 +2,7 @@
 // the trace into a list of assignments. The clean environment means we only
 // see what startup files do, never what the terminal passed in.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import type { Assignment, Op, Trace, Via } from "../model.ts";
@@ -11,16 +11,23 @@ import { words } from "../shellwords.ts";
 const MARK = "\x1f";
 const SEP = "\x1e";
 // bash repeats the first character of PS4 once per nesting level, which makes it a safe record marker.
+// The short fields come first, and the caller's file only inside a function, as "=" when it is the
+// same file (or "=" and the rest when it starts with it): bash 3.2 (macOS's /bin/bash) cuts the
+// expanded prefix at TRUNCATED bytes, so it must stay short, and long paths go last.
 const PS4 =
 	MARK +
 	[
-		"${BASH_SOURCE[0]:-}",
 		"${LINENO}",
 		"${FUNCNAME[0]:-}",
-		"${BASH_SOURCE[1]:-}",
 		"${BASH_LINENO[0]:-}",
+		"${BASH_SOURCE[0]:-}",
+		'${FUNCNAME[0]:+${BASH_SOURCE[1]/#"${BASH_SOURCE[0]}"/=}}',
 	].join(SEP) +
 	SEP;
+const TRUNCATED = 99;
+
+// env by its full path: `command -p env` would do, but bash 3.2 then runs it with the default PATH
+const ENV = ["/usr/bin/env", "/bin/env"].find((f) => existsSync(f)) ?? "env";
 
 export const BASE_PATH =
 	"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
@@ -52,20 +59,16 @@ export function traceBash(opts: TraceOptions = {}): Trace {
 	const envFile = join(dir, "env");
 	try {
 		// Startup files may print to stdout, so the final env goes to a file instead. Its path comes in through
-		// the environment, never spliced into the command (a ' in TMPDIR), and `command -p` finds env even if
-		// the startup files left PATH without it.
-		const r = spawnSync(
-			"bash",
-			["-lixc", 'command -p env -0 > "$ENVHOUND_ENV_FILE"'],
-			{
-				env: { ...initial, PS4, ENVHOUND_ENV_FILE: envFile },
-				cwd: home,
-				stdio: ["ignore", "ignore", "pipe"],
-				timeout: opts.timeoutMs ?? 15_000,
-				maxBuffer: 256 * 1024 * 1024,
-				encoding: "utf8",
-			},
-		);
+		// the environment, never spliced into the command (a ' in TMPDIR); env runs by its full path, so a
+		// PATH the startup files broke doesn't matter.
+		const r = spawnSync("bash", ["-lixc", `${ENV} -0 > "$ENVHOUND_ENV_FILE"`], {
+			env: { ...initial, PS4, ENVHOUND_ENV_FILE: envFile },
+			cwd: home,
+			stdio: ["ignore", "ignore", "pipe"],
+			timeout: opts.timeoutMs ?? 15_000,
+			// bytes: bash 3.2 cuts PS4 at a byte count, maybe inside a character
+			maxBuffer: 256 * 1024 * 1024,
+		});
 		if (r.error) {
 			if ((r.error as NodeJS.ErrnoException).code === "ETIMEDOUT")
 				throw new Error(
@@ -162,8 +165,9 @@ export function parseCommand(cmd: string): Step[] {
 	return [];
 }
 
+/** `stderr` as bash wrote it; a string is taken as its UTF-8 bytes. */
 export function parseTrace(
-	stderr: string,
+	stderr: string | Buffer,
 	initial: Record<string, string>,
 	final: Record<string, string>,
 ): Trace {
@@ -173,23 +177,22 @@ export function parseTrace(
 
 	// Lines without the marker (shell warnings, multi-line values) belong to the previous record.
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: \x1f is the record marker PS4 starts with
-	for (const record of stderr.split(/(?:^|\n)\x1f+/).slice(1)) {
-		const fields = record.split(SEP);
-		if (fields.length < 6) continue;
-		const [file, line, fn, callerFile, callerLine] = fields as [
-			string,
-			string,
-			string,
-			string,
-			string,
-		];
+	// one char per byte, so bash 3.2's byte count can be applied; fields are decoded once cut
+	const bytes = typeof stderr === "string" ? Buffer.from(stderr) : stderr;
+	for (const record of bytes.toString("latin1").split(/\n(?=\x1f)/)) {
+		const fields = traceFields(record);
+		if (!fields) continue;
+		const { line, fn, callerLine, file, callerFile, cmd } = fields;
 		if (!file) continue; // our own `env` command
-		const cmd = fields.slice(5).join(SEP).replace(/\n$/, "");
 		const via: Via | undefined = fn
 			? {
 					kind: fn === "source" || fn === "." ? "source" : "function",
 					name: fn,
-					at: { file: callerFile, line: Number(callerLine) },
+					// a caller cut off by bash 3.2: the line in the function is all we know
+					at:
+						callerFile === undefined
+							? { file, line: Number(line) }
+							: { file: callerFile, line: Number(callerLine) },
 				}
 			: undefined;
 		const frame =
@@ -228,4 +231,55 @@ export function parseTrace(
 		}
 	}
 	return { shell: "bash", initial, final, assignments };
+}
+
+interface TraceFields {
+	line: string;
+	fn: string;
+	callerLine: string;
+	file: string;
+	/** undefined: bash 3.2 cut it off */
+	callerFile: string | undefined;
+	cmd: string;
+}
+
+const utf8 = (latin1: string) => Buffer.from(latin1, "latin1").toString("utf8");
+
+/**
+ * One trace record (PS4's expansion, then the command), or undefined when it isn't one.
+ * `record` holds one char per byte (latin1), as parseTrace splits it.
+ */
+export function traceFields(record: string): TraceFields | undefined {
+	if (!record.startsWith(MARK)) return undefined;
+	const parts = record.replace(/^\x1f+/, "").split(SEP);
+	if (parts.length >= 6) {
+		const [line, fn, callerLine, file, callerFile] = parts.map(utf8) as [
+			string,
+			string,
+			string,
+			string,
+			string,
+		];
+		const cmd = utf8(parts.slice(5).join(SEP)).replace(/\n$/, "");
+		const caller = callerFile.startsWith("=")
+			? file + callerFile.slice(1)
+			: callerFile;
+		return { line, fn, callerLine, file, callerFile: caller, cmd };
+	}
+	// bash 3.2 keeps only the first TRUNCATED bytes of the expanded PS4 (marks included), so the
+	// command starts right there. Usable when the file name survived; the caller's may not have.
+	if (record.length <= TRUNCATED) return undefined;
+	const head = record
+		.slice(0, TRUNCATED)
+		.replace(/^\x1f+/, "")
+		.split(SEP);
+	if (head.length < 5) return undefined; // the file name itself was cut
+	const [line, fn, callerLine, file] = head.map(utf8) as [
+		string,
+		string,
+		string,
+		string,
+	];
+	const cmd = utf8(record.slice(TRUNCATED)).replace(/\n$/, "");
+	return { line, fn, callerLine, file, callerFile: undefined, cmd };
 }

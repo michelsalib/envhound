@@ -10,6 +10,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
@@ -393,8 +394,9 @@ describe.skipIf(process.platform === "win32")(
 				...homeEnv(home),
 			});
 			expect(u.status).toBe(0);
+			// realpath: on macOS the temporary directory is a symlink into /private
 			expect(u.stdout).toContain(
-				`upgraded envhound ${pkg.version} to 9.9.9 in ${dir}`,
+				`upgraded envhound ${pkg.version} to 9.9.9 in ${realpathSync(dir)}`,
 			);
 			expect(readFileSync(join(dir, "envhound"), "utf8")).not.toContain(
 				"// old",
@@ -569,7 +571,7 @@ describe.skipIf(process.platform !== "win32")(
 			);
 			expect(u.status).toBe(0);
 			expect(u.stdout).toContain(
-				`upgraded envhound ${pkg.version} to 9.9.9 in ${dir}`,
+				`upgraded envhound ${pkg.version} to 9.9.9 in ${realpathSync(dir)}`,
 			);
 			expect(readFileSync(mjs, "utf8")).not.toContain("// old");
 		});
