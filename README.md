@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/node/v/envhound" alt="Node version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue" alt="Linux, macOS and Windows">
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/envhound" alt="MIT license"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/michelsalib/envhound"><img src="https://api.scorecard.dev/projects/github.com/michelsalib/envhound/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 Why is `~/.local/bin` in your `PATH` twice? Which of your dotfiles sets `EDITOR`, and why does a new terminal
@@ -260,18 +261,17 @@ bun run dev -- blame PATH   # run from source
 bun test                    # unit tests + real bash on test/fixtures/home + built CLI on node
                             # (on Windows: the registry, install.ps1 and PowerShell completion instead of bash)
 bun run typecheck
+bun run lint                # Biome: formatting and lint
 bun run build               # dist/envhound.js, plain JS for node >= 20
 ```
 
-Source uses only `node:` APIs so the build runs on both Node and Bun.
+Source uses only `node:` APIs so the build runs on both Node and Bun. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for pull requests and releases, and [SECURITY.md](SECURITY.md) to report a vulnerability or verify a release.
 
 ## Releasing
 
-```sh
-npm version patch           # or minor/major: bumps package.json, commits, tags vX.Y.Z
-git push --follow-tags
-```
-
-The tag starts [`.github/workflows/release.yml`](.github/workflows/release.yml): tests, then `npm publish`
-with provenance, then a GitHub release with `envhound.js`, `install.sh`, `install.ps1` and `SHA256SUMS`. npm needs either
-an `NPM_TOKEN` repository secret or trusted publishing configured for this workflow on npmjs.com.
+A pull request bumps `package.json` and the changelog; pushing a `vX.Y.Z` tag on the merged commit starts
+[`.github/workflows/release.yml`](.github/workflows/release.yml): tests on Linux, macOS and Windows, a
+read-only build, then, once approved in the `release` environment, signed build provenance for every file,
+`npm publish` through trusted publishing, and a GitHub release with `envhound.js`, `install.sh`,
+`install.ps1` and `SHA256SUMS`.
