@@ -4,6 +4,7 @@ import {
 	constants,
 	copyFileSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	realpathSync,
 	renameSync,
@@ -94,6 +95,43 @@ export async function confirm(question: string): Promise<boolean> {
 	}
 }
 
+/** A value typed without echo, like a password. Undefined on ctrl-c or ctrl-d. The prompt goes to stderr. */
+export function askHidden(question: string): Promise<string | undefined> {
+	const stdin = process.stdin;
+	process.stderr.write(question);
+	return new Promise((resolve) => {
+		let value = "";
+		const done = (v: string | undefined) => {
+			stdin.off("data", onData);
+			stdin.setRawMode(false);
+			stdin.pause();
+			process.stderr.write("\n");
+			resolve(v);
+		};
+		const onData = (chunk: Buffer) => {
+			for (const ch of chunk.toString("utf8")) {
+				if (ch === "\r" || ch === "\n") return done(value);
+				if (ch === "\x03" || ch === "\x04") return done(undefined);
+				if (ch === "\x7f" || ch === "\b")
+					value = [...value].slice(0, -1).join("");
+				else if (ch >= " ") value += ch;
+			}
+		};
+		stdin.setRawMode(true);
+		stdin.resume();
+		stdin.on("data", onData);
+	});
+}
+
+/** All of standard input, without its final newline (as `echo` or a file would add). */
+export async function readStdin(): Promise<string> {
+	const chunks: Buffer[] = [];
+	for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+	return Buffer.concat(chunks)
+		.toString("utf8")
+		.replace(/\r?\n$/, "");
+}
+
 /**
  * Write every change, backing up existing files first. Refuses if a file changed since it was read.
  * Each file is written to a temporary file next to it, then renamed over it, so a failure leaves it as it was;
@@ -132,7 +170,15 @@ export function applyChanges(
 	} finally {
 		for (const s of staged.values()) rmSync(s.tmp, { force: true });
 	}
+	if (backups.length) pruneBackups(backupDir);
 	return backups;
+}
+
+/** Backups may hold secrets, so only the newest `keep` stay. Their names start with the time, so name order is age order. */
+export function pruneBackups(dir: string, keep = 50): void {
+	const names = readdirSync(dir).sort();
+	for (const name of names.slice(0, Math.max(0, names.length - keep)))
+		rmSync(join(dir, name), { force: true });
 }
 
 interface Staged {

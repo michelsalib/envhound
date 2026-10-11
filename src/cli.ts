@@ -17,7 +17,13 @@ import {
 	errorCount,
 	parseDotenv,
 } from "./dotenv.ts";
-import { applyChanges, confirm, renderChange } from "./edit.ts";
+import {
+	applyChanges,
+	askHidden,
+	confirm,
+	readStdin,
+	renderChange,
+} from "./edit.ts";
 import {
 	blameJson,
 	type DotenvReport,
@@ -109,6 +115,9 @@ Options:
   -y, --yes           set/unset/path: write without asking
   --dry-run           set/unset/path: show the diff, write nothing
   --append            path add: put DIR at the end of PATH
+  --stdin             set NAME --stdin: read the value from standard input, or
+                      type it unseen at a terminal, so it stays out of your
+                      shell history and the process list
   -h, --help          show this help
   -v, --version       show the version
 
@@ -129,6 +138,7 @@ type Values = {
 	yes?: boolean;
 	"dry-run"?: boolean;
 	append?: boolean;
+	stdin?: boolean;
 };
 
 /** Printed to stderr when the command ends; see update.ts. */
@@ -185,6 +195,7 @@ async function main(argv: string[]): Promise<number> {
 			yes: { type: "boolean", short: "y" },
 			"dry-run": { type: "boolean" },
 			append: { type: "boolean" },
+			stdin: { type: "boolean" },
 			help: { type: "boolean", short: "h" },
 			version: { type: "boolean", short: "v" },
 		},
@@ -305,10 +316,18 @@ async function main(argv: string[]): Promise<number> {
 				return usage(
 					command === "set" ? "set needs NAME=value" : "unset needs a NAME",
 				);
+			if (
+				values.stdin &&
+				(command !== "set" || args.length !== 1 || args[0]!.includes("="))
+			)
+				return usage(
+					"--stdin reads one value, for one name: envhound set NAME --stdin",
+				);
 			const valid = values.file ? DOTENV_NAME : SHELL_NAME;
 			const ops: EditOp[] = [];
 			for (const arg of args) {
-				const eq = arg.indexOf("=");
+				// with --stdin the argument is the bare NAME
+				const eq = values.stdin ? arg.length : arg.indexOf("=");
 				const name = command === "set" ? arg.slice(0, eq) : arg;
 				if (command === "set" && eq < 0)
 					return usage(`expected NAME=value, got '${arg}'`);
@@ -319,9 +338,20 @@ async function main(argv: string[]): Promise<number> {
 						`use 'envhound path ${command === "set" ? "add" : "remove"} DIR' to change ${name}`,
 					);
 				const file = values.file && resolve(values.file);
+				let value = arg.slice(eq + 1);
+				if (values.stdin) {
+					const read = process.stdin.isTTY
+						? await askHidden(`value for ${name} (not shown): `)
+						: await readStdin();
+					if (read === undefined) {
+						console.log("Nothing written.");
+						return 1;
+					}
+					value = read;
+				}
 				ops.push(
 					command === "set"
-						? { kind: "set", name, value: arg.slice(eq + 1), file }
+						? { kind: "set", name, value, file }
 						: { kind: "unset", name, file },
 				);
 			}

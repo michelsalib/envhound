@@ -134,7 +134,10 @@ This shell is unchanged. To apply it here too, run:
   files. The first time, it appends one line to your login file (`~/.bash_profile`, `~/.bash_login` or
   `~/.profile`, whichever bash reads) to load it. Being last, envhound's values win.
 - Every change is shown as a **diff** (secrets masked) and confirmed; `--yes` skips the question,
-  `--dry-run` only shows it. Changed files are **backed up** to `~/.local/state/envhound/backups/`.
+  `--dry-run` only shows it. Changed files are **backed up** to `~/.local/state/envhound/backups/` (the 50
+  most recent are kept, since they may hold secrets).
+- For a secret, `envhound set GH_TOKEN --stdin` reads the value from standard input, or lets you type it
+  unseen, so it stays out of your shell history and the process list.
 - After writing, envhound **re-traces** a fresh login shell to check the change took effect, and names the
   line that overrides it if not.
 - With `--file .env`, `set` and `unset` edit a `.env` file instead, changing only that key's line and keeping

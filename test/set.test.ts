@@ -21,7 +21,7 @@ import {
 	setKey,
 	unsetKey,
 } from "../src/dotenv.ts";
-import { applyChanges } from "../src/edit.ts";
+import { applyChanges, pruneBackups } from "../src/edit.ts";
 import {
 	addPath,
 	HEADER,
@@ -396,3 +396,50 @@ describe.skipIf(process.platform === "win32")(
 		});
 	},
 );
+
+test("only the newest 50 backups stay", () => {
+	const dir = mkdtempSync(join(tmpdir(), "envhound-backups-"));
+	for (let i = 0; i < 55; i++)
+		writeFileSync(
+			join(dir, `2026-10-${String(i).padStart(2, "0")}T00-00-00-000Z-.env`),
+			"",
+		);
+	pruneBackups(dir);
+	const left = readdirSync(dir).sort();
+	expect(left).toHaveLength(50);
+	expect(left[0]).toStartWith("2026-10-05");
+});
+
+describe.skipIf(process.platform === "win32")("set --stdin", () => {
+	const root = join(import.meta.dir, "..");
+	const run = (input: string, ...args: string[]) => {
+		const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
+		writeFileSync(join(home, ".bash_profile"), "");
+		const r = spawnSync("bun", ["src/cli.ts", "--home", home, ...args], {
+			cwd: root,
+			input,
+			encoding: "utf8",
+			env: {
+				...process.env,
+				XDG_CONFIG_HOME: "/nonexistent",
+				XDG_STATE_HOME: "/nonexistent",
+			},
+		});
+		return { ...r, home };
+	};
+
+	test("reads the value, without its final newline, and never prints it", () => {
+		const r = run("s3cret value\n", "set", "GH_TOKEN", "--stdin", "--yes");
+		expect(r.status).toBe(0);
+		expect(
+			readFileSync(join(r.home, ".config", "envhound", "env.sh"), "utf8"),
+		).toContain("export GH_TOKEN='s3cret value'\n");
+		expect(r.stdout + r.stderr).not.toContain("s3cret");
+	});
+
+	test("takes exactly one bare NAME", () => {
+		expect(run("x", "set", "A=1", "--stdin", "--yes").status).toBe(2);
+		expect(run("x", "set", "A", "B", "--stdin", "--yes").status).toBe(2);
+		expect(run("x", "unset", "A", "--stdin", "--yes").status).toBe(2);
+	});
+});
