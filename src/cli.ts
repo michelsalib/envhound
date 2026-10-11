@@ -54,7 +54,12 @@ import {
 	verifyWindows,
 } from "./set-windows.ts";
 import { traceBash } from "./trace/bash.ts";
-import { readRegistry, traceWindows, windowsTrace } from "./trace/windows.ts";
+import {
+	isElevated,
+	readRegistry,
+	traceWindows,
+	windowsTrace,
+} from "./trace/windows.ts";
 import { loadData } from "./tui/load.ts";
 import { runEditor } from "./tui/terminal.ts";
 import {
@@ -115,6 +120,9 @@ Options:
   -y, --yes           set/unset/path: write without asking
   --dry-run           set/unset/path: show the diff, write nothing
   --append            path add: put DIR at the end of PATH
+  --machine           Windows, from an administrator terminal: set, unset and
+                      path change the machine's variables (HKLM), for every
+                      user, instead of yours
   --stdin             set NAME --stdin: read the value from standard input, or
                       type it unseen at a terminal, so it stays out of your
                       shell history and the process list
@@ -139,6 +147,7 @@ type Values = {
 	"dry-run"?: boolean;
 	append?: boolean;
 	stdin?: boolean;
+	machine?: boolean;
 };
 
 /** Printed to stderr when the command ends; see update.ts. */
@@ -196,6 +205,7 @@ async function main(argv: string[]): Promise<number> {
 			"dry-run": { type: "boolean" },
 			append: { type: "boolean" },
 			stdin: { type: "boolean" },
+			machine: { type: "boolean" },
 			help: { type: "boolean", short: "h" },
 			version: { type: "boolean", short: "v" },
 		},
@@ -445,11 +455,30 @@ async function edit(
 	const files = [
 		...new Set(ops.flatMap((op) => ("file" in op && op.file ? [op.file] : []))),
 	];
+	const scope = values.machine ? "machine" : "user";
+	if (values.machine) {
+		if (!WINDOWS)
+			return usage(
+				"--machine is for Windows; elsewhere envhound changes your login shell's variables",
+			);
+		if (files.length) return usage("--machine doesn't apply to .env files");
+		if (!isElevated()) {
+			console.error(
+				"envhound: --machine changes the machine's variables, for every user, which needs an administrator terminal (right-click it and choose Run as administrator)",
+			);
+			return 1;
+		}
+	}
 	const planShellOps = () => {
 		if (!WINDOWS)
 			return planShell(shellOps, loc, traceBash({ home: values.home }));
 		const reg = readRegistry();
-		return planWindows(shellOps, reg.user, windowsTrace(reg, process.env));
+		return planWindows(
+			shellOps,
+			reg[scope],
+			windowsTrace(reg, process.env),
+			scope,
+		);
 	};
 	const plans = [
 		...(shellOps.length ? [planShellOps()] : []),
@@ -503,7 +532,7 @@ async function edit(
 
 	const fresh = OTHER_SHELL ? "a fresh bash login shell" : undefined;
 	const checks = WINDOWS
-		? verifyWindows(shellOps, traceWindows())
+		? verifyWindows(shellOps, traceWindows(), scope)
 		: verify(shellOps, traceBash({ home: values.home }), loc, fresh);
 	for (const check of checks)
 		console.log(

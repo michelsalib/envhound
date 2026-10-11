@@ -25,6 +25,7 @@ import { registryText } from "./set-windows.ts";
 import {
 	type RegistryWrite,
 	readRegistry,
+	type Scope,
 	writeRegistry,
 } from "./trace/windows.ts";
 
@@ -35,8 +36,10 @@ export interface FileChange {
 	after: string;
 	/** file mode to enforce, e.g. 0o600 for files that may hold secrets */
 	mode?: number;
-	/** Windows: path is HKCU\Environment and these writes make the change; before and after are only shown. */
+	/** Windows: path is HKCU\Environment (or HKLM's) and these writes make the change; before and after are only shown. */
 	registry?: RegistryWrite[];
+	/** Windows: whose variables, yours (the default) or the machine's */
+	scope?: Scope;
 }
 
 export function readIfExists(path: string): string | undefined {
@@ -142,7 +145,9 @@ export function applyChanges(
 	backupDir: string,
 ): string[] {
 	const now = (c: FileChange) =>
-		c.registry ? registryText(readRegistry().user) : readIfExists(c.path);
+		c.registry
+			? registryText(readRegistry()[c.scope ?? "user"])
+			: readIfExists(c.path);
 	for (const c of changes)
 		if (now(c) !== c.before)
 			throw new Error(
@@ -156,8 +161,9 @@ export function applyChanges(
 		for (const c of changes) {
 			if (c.registry) {
 				mkdirSync(backupDir, { recursive: true, mode: 0o700 });
-				const backup = join(backupDir, `${stamp}-HKCU-Environment.reg`);
-				writeRegistry(c.registry, { backup });
+				const hive = c.scope === "machine" ? "HKLM" : "HKCU";
+				const backup = join(backupDir, `${stamp}-${hive}-Environment.reg`);
+				writeRegistry(c.registry, { backup, scope: c.scope });
 				backups.push(backup);
 				continue;
 			}

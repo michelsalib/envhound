@@ -16,12 +16,14 @@ import {
 } from "../src/set-windows.ts";
 import {
 	expand,
+	isElevated,
 	MACHINE,
 	powershell,
 	type Registry,
 	readRegistry,
 	SESSION,
 	USER,
+	USER_KEY,
 	windowsTrace,
 	writeRegistry,
 } from "../src/trace/windows.ts";
@@ -171,7 +173,7 @@ describe("planWindows", () => {
 		).toEqual([{ name: "EDITOR" }]);
 		const p = plan({ kind: "unset", name: "windir" });
 		expect(p.changes).toEqual([]);
-		expect(p.notes[0]).toContain("needs an administrator");
+		expect(p.notes[0]).toContain("--machine from an administrator terminal");
 	});
 	test("path add: under the profile it is stored as %USERPROFILE%; a present directory moves", () => {
 		const front = plan({
@@ -268,6 +270,40 @@ describe("planWindows", () => {
 			).changes[0]?.registry?.[0]?.kind,
 		).toBe("String");
 	});
+	test("--machine: the machine's variables, stored as given, with notes about yours", () => {
+		const m = (...ops: EditOp[]) => planWindows(ops, reg.machine, t, "machine");
+		const java = m({ kind: "set", name: "JAVA_HOME", value: "C:\\Java22" });
+		expect(java.changes[0]).toMatchObject({
+			path: MACHINE,
+			scope: "machine",
+			registry: [{ name: "JAVA_HOME", kind: "String", value: "C:\\Java22" }],
+		});
+		expect(java.notes[0]).toContain(`also set in your own variables (${USER})`);
+		// no %USERPROFILE% in the machine's Path: it would be each user's folder
+		const add = m({
+			kind: "path-add",
+			dir: "C:\\Users\\u\\go\\bin",
+			position: "back",
+		});
+		expect(add.changes[0]?.registry?.[0]?.value).toEndWith(
+			";C:\\Users\\u\\go\\bin",
+		);
+		expect(m({ kind: "unset", name: "windir" }).changes[0]?.registry).toEqual([
+			{ name: "windir" },
+		]);
+		// C:\Tools\ is in both Paths: the machine's loses it, yours keeps it, and the note says so
+		const rm = m({ kind: "path-remove", dir: "C:\\tools" });
+		expect(rm.changes[0]?.registry?.[0]?.value).toBe(
+			"%SystemRoot%\\system32;%SystemRoot%",
+		);
+		expect(rm.notes).toEqual([
+			expect.stringContaining("also in your own Path"),
+		]);
+	});
+	test("without --machine, the notes say how to change the machine's", () =>
+		expect(plan({ kind: "unset", name: "windir" }).notes[0]).toContain(
+			"--machine from an administrator terminal",
+		));
 	test("PowerShell commands hide secret values unless asked", () => {
 		const ops: EditOp[] = [{ kind: "set", name: "API_TOKEN", value: "s3cret" }];
 		expect(powershellCommands(ops)).toEqual([
@@ -298,11 +334,11 @@ test.skipIf(process.platform !== "win32")(
 					{ name: "A", kind: "String", value: "café ☕ 'q' \"d\"" },
 					{ name: "P", kind: "ExpandString", value: "%USERPROFILE%\\x" },
 				],
-				{ userKey, notify: false },
+				{ key: userKey, notify: false },
 			);
 			writeRegistry(
 				[{ name: "P" }, { name: "B", kind: "String", value: "b" }],
-				{ userKey, backup, notify: false },
+				{ key: userKey, backup, notify: false },
 			);
 			expect(readRegistry(userKey).user).toEqual([
 				{ name: "A", kind: "String", value: "café ☕ 'q' \"d\"" },
@@ -313,6 +349,37 @@ test.skipIf(process.platform !== "win32")(
 		} finally {
 			powershell(
 				`Remove-Item -LiteralPath 'HKCU:\\${userKey}' -Recurse -ErrorAction SilentlyContinue`,
+			);
+		}
+	},
+);
+
+// GitHub's Windows runners are administrators; elsewhere this is skipped rather than failed
+const admin = process.platform === "win32" && isElevated();
+test.skipIf(!admin)(
+	"the machine's variables: written to HKLM, read back, backed up",
+	() => {
+		const machineKey = `SOFTWARE\\envhound-test-${process.pid}`;
+		const backup = join(mkdtempSync(join(tmpdir(), "envhound-")), "hklm.reg");
+		try {
+			writeRegistry([{ name: "M", kind: "String", value: "1" }], {
+				scope: "machine",
+				key: machineKey,
+				notify: false,
+			});
+			writeRegistry([{ name: "M", kind: "String", value: "2" }], {
+				scope: "machine",
+				key: machineKey,
+				backup,
+				notify: false,
+			});
+			expect(readRegistry(USER_KEY, machineKey).machine).toEqual([
+				{ name: "M", kind: "String", value: "2" },
+			]);
+			expect(readFileSync(backup, "utf16le")).toContain('"M"="1"');
+		} finally {
+			powershell(
+				`Remove-Item -LiteralPath 'HKLM:\\${machineKey}' -Recurse -ErrorAction SilentlyContinue`,
 			);
 		}
 	},
@@ -349,12 +416,12 @@ describe("envhound edit on Windows", () => {
 		expect(data.path.find((p) => p.dir === "C:\\WINDOWS")?.managed).toBe(false);
 		expect(at("TMPBASE")).toBeGreaterThan(-1); // in the registry, not in this terminal yet
 	});
-	test("d unsets the user's; the machine's needs an administrator; o has nothing to open", () => {
+	test("d unsets the user's; the machine's points to --machine; o has nothing to open", () => {
 		expect(press(on("EDITOR"), { ch: "d" }).ops).toEqual([
 			{ kind: "unset", name: "EDITOR" },
 		]);
 		expect(press(on("windir"), { ch: "d" }).message?.text).toContain(
-			"needs an administrator",
+			"envhound --machine, from an administrator terminal",
 		);
 		expect(press(on("EDITOR"), { ch: "o" }).message?.text).toContain(
 			"nothing to open",

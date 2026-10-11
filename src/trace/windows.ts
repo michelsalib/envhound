@@ -21,6 +21,9 @@ export interface RegistryValue {
 	value: string;
 }
 
+/** Whose variables a change goes to: yours (HKCU), or the machine's (HKLM), for every user. */
+export type Scope = "user" | "machine";
+
 export interface Registry {
 	machine: RegistryValue[];
 	session: RegistryValue[];
@@ -113,7 +116,7 @@ const READ = `
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $out = [ordered]@{}
-foreach ($k in @(@('machine', 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'), @('session', 'HKCU:\\Volatile Environment'), @('user', ('HKCU:\\' + $env:ENVHOUND_USER_KEY)))) {
+foreach ($k in @(@('machine', ('HKLM:\\' + $env:ENVHOUND_MACHINE_KEY)), @('session', 'HKCU:\\Volatile Environment'), @('user', ('HKCU:\\' + $env:ENVHOUND_USER_KEY)))) {
   $vals = New-Object System.Collections.ArrayList
   $key = Get-Item -LiteralPath $k[1] -ErrorAction SilentlyContinue
   if ($key) {
@@ -172,10 +175,20 @@ export function powershell(
 
 /** The subkey of HKCU holding the user's variables. */
 export const USER_KEY = "Environment";
+/** The subkey of HKLM holding the machine's variables. */
+export const MACHINE_SUBKEY =
+	"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
 
-export function readRegistry(userKey = USER_KEY): Registry {
+/** The keys are parameters so tests can use scratch keys. */
+export function readRegistry(
+	userKey = USER_KEY,
+	machineKey = MACHINE_SUBKEY,
+): Registry {
 	const out = JSON.parse(
-		powershell(READ, { ENVHOUND_USER_KEY: userKey }).replace(/^﻿/, ""),
+		powershell(READ, {
+			ENVHOUND_USER_KEY: userKey,
+			ENVHOUND_MACHINE_KEY: machineKey,
+		}).replace(/^﻿/, ""),
 	) as Registry;
 	return {
 		machine: out.machine ?? [],
@@ -198,34 +211,54 @@ export interface RegistryWrite {
 }
 
 // Backs up the key as a .reg file (double-click to restore), then writes. Values
-// travel as JSON in an environment variable, so nothing needs quoting.
+// travel as JSON in an environment variable, so nothing needs quoting. The
+// machine's key (HKLM) needs an administrator.
 const WRITE = `
 $ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Stop'
+$machine = $env:ENVHOUND_SCOPE -eq 'machine'
+$hive = if ($machine) { 'HKLM' } else { 'HKCU' }
 if ($env:ENVHOUND_BACKUP) {
-  & reg.exe export ('HKCU\\' + $env:ENVHOUND_USER_KEY) $env:ENVHOUND_BACKUP /y | Out-Null
+  & reg.exe export ($hive + '\\' + $env:ENVHOUND_KEY) $env:ENVHOUND_BACKUP /y | Out-Null
   if ($LASTEXITCODE) { throw 'could not back up the key' }
 }
-$key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($env:ENVHOUND_USER_KEY)
+$root = if ($machine) { [Microsoft.Win32.Registry]::LocalMachine } else { [Microsoft.Win32.Registry]::CurrentUser }
+$key = $root.CreateSubKey($env:ENVHOUND_KEY)
 foreach ($w in (ConvertFrom-Json $env:ENVHOUND_WRITES)) {
   if ($null -eq $w.value) { $key.DeleteValue($w.name, $false) }
   else { $key.SetValue($w.name, [string]$w.value, [Microsoft.Win32.RegistryValueKind]$w.kind) }
 }
 $key.Close()
 # .NET tells every window that the environment changed after any change to the
-# user's variables, even deleting one that doesn't exist; Explorer then gives
-# new terminals the new values
-if ($env:ENVHOUND_NOTIFY) { [Environment]::SetEnvironmentVariable('ENVHOUND_NOTIFY', $null, 'User') }
+# variables, even deleting one that doesn't exist; Explorer then gives new
+# terminals the new values
+if ($env:ENVHOUND_NOTIFY) { [Environment]::SetEnvironmentVariable('ENVHOUND_NOTIFY', $null, $(if ($machine) { 'Machine' } else { 'User' })) }
 `;
 
 export function writeRegistry(
 	writes: RegistryWrite[],
-	opts: { backup?: string; userKey?: string; notify?: boolean } = {},
+	opts: {
+		backup?: string;
+		scope?: Scope;
+		/** the subkey written, for tests; by default the scope's Environment key */
+		key?: string;
+		notify?: boolean;
+	} = {},
 ): void {
+	const scope = opts.scope ?? "user";
 	powershell(WRITE, {
-		ENVHOUND_USER_KEY: opts.userKey ?? USER_KEY,
+		ENVHOUND_SCOPE: scope,
+		ENVHOUND_KEY: opts.key ?? (scope === "machine" ? MACHINE_SUBKEY : USER_KEY),
 		ENVHOUND_WRITES: JSON.stringify(writes),
 		ENVHOUND_BACKUP: opts.backup ?? "",
 		ENVHOUND_NOTIFY: opts.notify === false ? "" : "1",
 	});
+}
+
+/** True when this process may write the machine's variables: an administrator terminal. */
+export function isElevated(): boolean {
+	const out = powershell(
+		"([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
+	);
+	return out.trim() === "True";
 }

@@ -1,6 +1,7 @@
 // envhound set / unset / path add / path remove on Windows: changes go to the
-// user's variables (HKCU\Environment), which need no administrator. The machine's
-// (HKLM) come first in PATH and lose to the user's for other variables.
+// user's variables (HKCU\Environment), which need no administrator, or with --machine
+// from an administrator terminal to the machine's (HKLM), for every user. The machine's
+// come first in PATH and lose to the user's for other variables.
 import { chain, dirKey, lookup, splitPath } from "./analyze.ts";
 import type { FileChange } from "./edit.ts";
 import { holdsSecret } from "./format.ts";
@@ -11,6 +12,7 @@ import {
 	MACHINE,
 	type RegistryValue,
 	type RegistryWrite,
+	type Scope,
 	USER,
 } from "./trace/windows.ts";
 
@@ -46,19 +48,25 @@ function storedDir(dir: string, profile: string | undefined): string {
 	return dir;
 }
 
+const KEY = { user: USER, machine: MACHINE } as const;
+
 export function planWindows(
 	ops: EditOp[],
-	user: RegistryValue[],
+	stored: RegistryValue[],
 	trace: Trace,
+	scope: Scope = "user",
 ): Plan {
-	let values = user.filter(isText);
+	let values = stored.filter(isText);
 	const notes: string[] = [];
+	const here = KEY[scope];
+	const other = scope === "user" ? MACHINE : USER;
+	const mine = scope === "user" ? "your" : "the machine's";
 	const key = dirKey(trace);
 	const get = (name: string) => lookup(trace, trace.final, name);
 	const find = (name: string) =>
 		values.find((v) => v.name.toUpperCase() === name.toUpperCase());
-	const machine = (name: string) =>
-		chain(trace, name).some((a) => a.at.file === MACHINE);
+	const inOther = (name: string) =>
+		chain(trace, name).some((a) => a.at.file === other);
 	const put = (v: RegistryValue) =>
 		(values = find(v.name)
 			? values.map((x) => (x === find(v.name) ? { ...v, name: x.name } : x))
@@ -75,6 +83,11 @@ export function planWindows(
 		put({ name: pathOf()?.name ?? "Path", kind, value: dirs.join(";") });
 		writes.set("PATH", { name: pathOf()!.name, kind, value: dirs.join(";") });
 	};
+	/** The other scope's value stays: how to change it. */
+	const elsewhere = (subject: string) =>
+		scope === "user"
+			? `${subject} (${MACHINE}), for every user; envhound leaves it, unless you run it with --machine from an administrator terminal`
+			: `${subject} (${USER}), which wins in your terminals; envhound leaves it (run it without --machine to change it)`;
 
 	for (const op of ops) {
 		switch (op.kind) {
@@ -82,9 +95,11 @@ export function planWindows(
 				const kind = hasReference(op.value)
 					? "ExpandString"
 					: ((find(op.name)?.kind as RegistryWrite["kind"]) ?? "String");
-				if (machine(op.name))
+				if (inOther(op.name))
 					notes.push(
-						`${op.name} is also set at ${MACHINE}, for every user; yours wins in your new terminals`,
+						scope === "user"
+							? `${op.name} is also set at ${MACHINE}, for every user; yours wins in your new terminals`
+							: `${op.name} is also set in your own variables (${USER}), which win in your terminals; this sets it for the other users`,
 					);
 				put({ name: op.name, kind, value: op.value });
 				writes.set(op.name.toUpperCase(), {
@@ -96,13 +111,17 @@ export function planWindows(
 			}
 			case "unset": {
 				const current = find(op.name);
-				if (machine(op.name))
+				if (inOther(op.name))
 					notes.push(
-						`${op.name} is set at ${MACHINE}, for every user; changing that needs an administrator, so envhound leaves it`,
+						elsewhere(
+							scope === "user"
+								? `${op.name} is set for the machine`
+								: `${op.name} is also set in your own variables`,
+						),
 					);
 				if (!current) {
-					if (!machine(op.name))
-						notes.push(`${op.name} is not in your variables (${USER})`);
+					if (!inOther(op.name))
+						notes.push(`${op.name} is not in ${mine} variables (${here})`);
 					break;
 				}
 				values = values.filter((v) => v !== current);
@@ -111,7 +130,9 @@ export function planWindows(
 			}
 			case "path-add": {
 				const dirs = entries();
-				const stored = storedDir(op.dir, get("USERPROFILE"));
+				// %USERPROFILE% only means the right folder in your own Path
+				const stored =
+					scope === "user" ? storedDir(op.dir, get("USERPROFILE")) : op.dir;
 				const rest = dirs.filter((d) => expanded(d) !== key(op.dir));
 				const next =
 					op.position === "front" ? [stored, ...rest] : [...rest, stored];
@@ -121,48 +142,65 @@ export function planWindows(
 			case "path-remove": {
 				const dirs = entries();
 				const rest = dirs.filter((d) => expanded(d) !== key(op.dir));
-				const inMachine = chain(trace, "PATH").some(
+				// the stored value, not the result: the user's Path result includes the machine's
+				const inOtherPath = chain(trace, "PATH").some(
 					(a) =>
-						a.at.file === MACHINE &&
-						splitPath(trace, a.result).some((d) => key(d) === key(op.dir)),
+						a.at.file === other &&
+						splitPath(trace, a.value).some((d) => expanded(d) === key(op.dir)),
 				);
 				if (rest.length !== dirs.length) setPath(rest);
-				else if (!inMachine)
-					notes.push(`${op.dir} is not in your Path (${USER})`);
-				if (inMachine)
+				else if (!inOtherPath)
+					notes.push(`${op.dir} is not in ${mine} Path (${here})`);
+				if (inOtherPath)
 					notes.push(
-						`${op.dir} is in the machine's Path (${MACHINE}); changing that needs an administrator, so envhound leaves it`,
+						elsewhere(
+							scope === "user"
+								? `${op.dir} is in the machine's Path`
+								: `${op.dir} is also in your own Path`,
+						),
 					);
 				break;
 			}
 		}
 	}
 
-	const before = registryText(user);
+	const before = registryText(stored);
 	const after = registryText(values);
 	const changes: FileChange[] =
 		writes.size && after !== before
-			? [{ path: USER, before, after, registry: [...writes.values()] }]
+			? [{ path: here, before, after, registry: [...writes.values()], scope }]
 			: [];
 	return { changes, notes };
 }
 
 /** Compare the ops against the registry read again after writing. */
-export function verifyWindows(ops: EditOp[], trace: Trace): Check[] {
+export function verifyWindows(
+	ops: EditOp[],
+	trace: Trace,
+	scope: Scope = "user",
+): Check[] {
 	const key = dirKey(trace);
 	const path = splitPath(trace, lookup(trace, trace.final, "PATH")).map(key);
 	const last = (name: string) => chain(trace, name).at(-1);
+	const stored = (name: string) =>
+		chain(trace, name).find((a) => a.at.file === KEY[scope]);
 	// biome-ignore lint/suspicious/useIterableCallbackReturn: the switch covers every op kind, and each case returns
 	return ops.map((op): Check => {
 		switch (op.kind) {
 			case "set": {
 				const a = last(op.name);
-				return a?.at.file === USER && a.value === op.value
-					? { ok: true, message: `new terminals now get ${op.name}` }
-					: {
-							ok: false,
-							message: `new terminals don't get ${op.name} (envhound blame ${op.name} shows why)`,
-						};
+				if (a?.at.file === KEY[scope] && a.value === op.value)
+					return { ok: true, message: `new terminals now get ${op.name}` };
+				// the machine's value is written, but yours overrides it in your terminals
+				if (scope === "machine" && stored(op.name)?.value === op.value)
+					return {
+						ok: true,
+						message: `${op.name} is set for every user; your own value (${USER}) still wins in your terminals`,
+					};
+				return {
+					ok: false,
+					message: `new terminals don't get ${op.name} (envhound blame ${op.name} shows why)`,
+				};
 			}
 			case "unset":
 				return last(op.name)

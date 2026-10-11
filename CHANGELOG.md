@@ -4,6 +4,19 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 
 ## Unreleased
 
+### Added
+
+- Windows: `--machine` makes `set`, `unset` and `path add|remove` change the machine's variables
+  (`HKLM`), for every user, from an administrator terminal. Without it, envhound says how to.
+
+### Fixed
+
+- macOS: the PATH a fresh shell ends with was reported as the system default (since 0.2.1), so
+  `blame PATH` and the checks after `path add` were wrong.
+- macOS: assignments in sourced files were missed when their paths were long, because macOS's
+  bash 3.2 cuts its trace prefix at 99 bytes.
+- macOS: bash completion offered nothing, because of how bash 3.2 expands an array slice.
+
 ### Security
 
 - `envhound upgrade` no longer runs a downloaded installer. It downloads `envhound.js` over https,

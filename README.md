@@ -166,6 +166,16 @@ This terminal is unchanged. To apply it here too, run in PowerShell:
   $env:Path = 'C:\Users\me\go\bin;' + $env:Path
 ```
 
+From an administrator terminal, `--machine` changes **the machine's variables** instead
+(`HKLM\…\Environment`, the "System variables" of that dialog), for every user. envhound checks that the
+terminal is elevated before anything else, backs the key up to a `.reg` file, and notes when your own
+variables override the machine's:
+
+```powershell
+envhound path add --machine "C:\Program Files\Tool\bin"
+envhound unset --machine OLD_VARIABLE
+```
+
 - The diff shows each `Path` entry on its own line. Directories under your profile are stored as
   `%USERPROFILE%\…`, and values with a `%VAR%` reference are stored so that Windows expands them.
 - Before writing, envhound saves the key as a `.reg` file in `%LOCALAPPDATA%\envhound\backups`

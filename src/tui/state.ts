@@ -539,7 +539,7 @@ function notOurs(
 	if (row.by === "(inherited)")
 		return `${what} comes from the program that started this shell`;
 	if (s.data.windows && row.by.startsWith("HKLM"))
-		return `${what} comes from ${row.by}, for every user: changing it needs an administrator`;
+		return `${what} comes from ${row.by}, for every user: change it with envhound --machine, from an administrator terminal`;
 	return `${what} is set by ${s.data.windows ? "Windows" : "login or bash"} itself`;
 }
 

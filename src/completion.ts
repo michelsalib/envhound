@@ -21,6 +21,8 @@ const FLAGS: Record<string, string> = {
 	"--yes": "write without asking",
 	"--dry-run": "show the diff, write nothing",
 	"--append": "path add: put DIR at the end",
+	"--stdin": "set NAME: read the value from stdin",
+	"--machine": "Windows: the machine's variables (admin)",
 	"--help": "show help",
 	"--version": "show the version",
 };
