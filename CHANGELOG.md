@@ -2,6 +2,14 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Fixed
+
+- `envhound edit`: a long path or value was cut in the table and in the line below it, so it
+  could not be read; the selected entry's detail now wraps onto up to four lines, and shows the
+  variable's value too.
+
 ## 0.3.1 (2026-10-11)
 
 0.3.0 was tagged but never published; everything it was to contain is here.

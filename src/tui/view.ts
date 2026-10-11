@@ -47,6 +47,22 @@ function cell(s: string, w: number): string {
 		: clean.padEnd(w + (clean.length - chars.length));
 }
 
+/** Lines the selected entry's detail may take: a long path or value wraps rather than being cut. */
+const DETAIL_LINES = 4;
+
+/** `text` in lines of `width` columns, at most `max`; the last ends with … when the text is longer. */
+export function wrap(text: string, width: number, max: number): string[] {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+	const chars = [...text.replace(/[\x00-\x1f\x7f]/g, " ")];
+	const w = Math.max(1, width);
+	const lines: string[] = [];
+	for (let i = 0; i < chars.length && lines.length < max; i += w)
+		lines.push(chars.slice(i, i + w).join(""));
+	if (chars.length > w * max)
+		lines[max - 1] = `${[...lines[max - 1]!].slice(0, w - 1).join("")}…`;
+	return lines.length ? lines : [""];
+}
+
 /** Cut a table row that is wider than the screen; shorter rows are left as they are. */
 function clip(s: string, w: number): string {
 	return [...s].length > w ? cell(s, w) : s;
@@ -175,26 +191,37 @@ export function render(
 		);
 	}
 
-	const bodyHeight = Math.max(0, height - out.length - footer.length - 2);
-	let body: string[];
-	let detail: string;
-	if (s.help) {
-		body = HELP.map((l) => cell(l, width));
-		detail = "";
-	} else if (tab.kind === "vars") {
-		body = varLines(s, width, bodyHeight, c);
-		detail = varDetail(s);
-	} else if (tab.kind === "path") {
-		body = pathLines(s, width, bodyHeight, c);
-		detail = pathDetail(s);
-	} else {
-		body = dotenvLines(s, tab.file, width, bodyHeight, c);
-		detail = dotenvDetail(s, tab.file);
-	}
+	const detail = s.help
+		? ""
+		: tab.kind === "vars"
+			? varDetail(s)
+			: tab.kind === "path"
+				? pathDetail(s)
+				: dotenvDetail(s, tab.file);
+	// the detail wraps, so a long path or value can be read whole; it gives back room on short screens
+	const detailLines = wrap(
+		detail,
+		width,
+		Math.max(
+			1,
+			Math.min(DETAIL_LINES, height - out.length - footer.length - 4),
+		),
+	);
+	const bodyHeight = Math.max(
+		0,
+		height - out.length - footer.length - 1 - detailLines.length,
+	);
+	const body = s.help
+		? HELP.map((l) => cell(l, width))
+		: tab.kind === "vars"
+			? varLines(s, width, bodyHeight, c)
+			: tab.kind === "path"
+				? pathLines(s, width, bodyHeight, c)
+				: dotenvLines(s, tab.file, width, bodyHeight, c);
 
 	for (let i = 0; i < bodyHeight; i++) out.push(body[i] ?? "");
 	out.push(c.dim("─".repeat(Math.max(0, width))));
-	out.push(cell(detail, width));
+	for (const line of detailLines) out.push(cell(line, width));
 	out.push(...footer);
 	return out.slice(0, height);
 }
@@ -284,7 +311,8 @@ function varDetail(s: State): string {
 				: s.data.windows
 					? "set by Windows"
 					: "set by login or bash";
-	return `${r.name}: ${from}${r.pending ? `, staged: ${r.pending}` : ""}`;
+	const value = pairValue(r.name, r, s, "unset");
+	return `${r.name}=${value}  (${from}${r.pending ? `, staged: ${r.pending}` : ""})`;
 }
 
 function pathLines(
@@ -350,7 +378,7 @@ function pathDetail(s: State): string {
 			: r.by === "(initial)"
 				? "in the initial PATH bash starts with"
 				: "inherited from the program that started this shell";
-	return `${tilde(r.dir, s.data.home)}: ${from}`;
+	return `${tilde(r.dir, s.data.home)}  (${from})`;
 }
 
 /** What a .env row means next to the shell, duplicates and problems first. */
