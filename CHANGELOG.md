@@ -2,7 +2,7 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
-## Unreleased
+## 0.3.2 (2026-10-11)
 
 ### Fixed
 
