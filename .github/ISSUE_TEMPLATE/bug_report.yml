@@ -1,0 +1,30 @@
+name: Bug report
+description: envhound shows something wrong, or a command fails
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran, what it printed, and what you expected instead. Mask any secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest startup file lines (or registry values, or .env file) that show it.
+  - type: input
+    id: version
+    attributes:
+      label: envhound version
+      description: The output of `envhound --version`
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: OS, your login shell, and how you installed envhound (npm, install.sh, install.ps1, npx…)
+    validations:
+      required: true
