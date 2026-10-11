@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue" alt="Linux, macOS and Windows">
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/envhound" alt="MIT license"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/michelsalib/envhound"><img src="https://api.scorecard.dev/projects/github.com/michelsalib/envhound/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://www.bestpractices.dev/projects/15395"><img src="https://www.bestpractices.dev/projects/15395/badge" alt="OpenSSF Best Practices: passing"></a>
 </p>
 
 Why is `~/.local/bin` in your `PATH` twice? Which of your dotfiles sets `EDITOR`, and why does a new terminal

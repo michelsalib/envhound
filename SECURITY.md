@@ -50,4 +50,5 @@ gives the same `dist/envhound.js` as the release's `SHA256SUMS` (with the Bun ve
 binary must match `SHA256SUMS` on GitHub and the copy of `SHA256SUMS` published in the npm package.
 
 The sources are analysed by CodeQL on every pull request, and the project's practices are tracked by
-[OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/michelsalib/envhound).
+[OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/michelsalib/envhound) and hold the
+[OpenSSF Best Practices](https://www.bestpractices.dev/projects/15395) passing badge.
