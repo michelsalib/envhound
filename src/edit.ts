@@ -14,7 +14,12 @@ import {
 import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { hunks, lineDiff } from "./diff.ts";
-import { isSecret, type RenderOptions, tilde } from "./format.ts";
+import {
+	isSecret,
+	maskUrlPasswords,
+	type RenderOptions,
+	tilde,
+} from "./format.ts";
 import { registryText } from "./set-windows.ts";
 import {
 	type RegistryWrite,
@@ -45,11 +50,13 @@ export function readIfExists(path: string): string | undefined {
 const ASSIGNMENT =
 	/^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_.-]*)(\s*=\s*)(.*)$/;
 
-/** Hide values of secret-looking variables in a diff line. */
+/** Hide values of secret-looking variables, and passwords in URLs, in a diff line. */
 function maskLine(line: string, o: RenderOptions): string {
 	if (o.showSecrets) return line;
-	return line.replace(ASSIGNMENT, (m, pre: string, key: string, eq: string) =>
-		isSecret(key) ? `${pre}${key}${eq}********` : m,
+	return maskUrlPasswords(
+		line.replace(ASSIGNMENT, (m, pre: string, key: string, eq: string) =>
+			isSecret(key) ? `${pre}${key}${eq}********` : m,
+		),
 	);
 }
 

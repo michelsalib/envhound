@@ -1,6 +1,6 @@
 // Draws a State as exactly `height` lines of at most `width` columns.
 import { basename, relative } from "node:path";
-import { isSecret, tilde } from "../format.ts";
+import { masked, tilde } from "../format.ts";
 import {
 	currentTab,
 	cursorOf,
@@ -202,7 +202,7 @@ export function render(
 function mask(name: string, value: string | undefined, s: State): string {
 	if (value === undefined) return "";
 	const v = value.replace(/\n/g, "\\n");
-	return isSecret(name) && !s.showSecrets ? "********" : tilde(v, s.data.home);
+	return tilde(s.showSecrets ? v : masked(name, v), s.data.home);
 }
 
 /** "value", "old → new", "value  (unset)" */

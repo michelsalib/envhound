@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { chain, pathEntries } from "./analyze.ts";
 import { parseDotenv, serializeDotenv, setKey, unsetKey } from "./dotenv.ts";
 import { type FileChange, readIfExists } from "./edit.ts";
-import { isSecret, where } from "./format.ts";
+import { holdsSecret, where } from "./format.ts";
 import {
 	addPath,
 	HEADER,
@@ -221,7 +221,7 @@ export function currentShellCommands(
 	return ops.flatMap((op) => {
 		switch (op.kind) {
 			case "set":
-				if (!showSecrets && isSecret(op.name))
+				if (!showSecrets && holdsSecret(op.name, op.value))
 					return [
 						`# export ${op.name}=…  (value hidden; --show-secrets prints this command)`,
 					];

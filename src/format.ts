@@ -32,18 +32,30 @@ function words(o: RenderOptions) {
 			};
 }
 
+// AUTH as a word (NPM_CONFIG__AUTH, BASIC_AUTH), never inside AUTHOR
 const SECRET =
-	/TOKEN|SECRET|PASSW(OR)?D|API_?KEY|PRIVATE_?KEY|CREDENTIAL|_KEY$|^KEY$/i;
+	/TOKEN|SECRET|PASSW(OR)?D|PASSPHRASE|(^|_)PASS$|API_?KEY|PRIVATE_?KEY|CREDENTIAL|_KEY$|^KEY$|(^|_)PAT$|(^|_)AUTH($|_)|COOKIE|_DSN$/i;
 export const isSecret = (name: string) => SECRET.test(name);
+
+/** The password in URLs such as postgres://user:password@host, masked whatever the variable is called. */
+export const maskUrlPasswords = (value: string) =>
+	value.replace(/([a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)[^\s@/]+@/gi, "$1********@");
+
+/** The value as envhound shows it: all of it masked for a secret-looking name, else only URL passwords. */
+export function masked(name: string, value: string): string {
+	return isSecret(name) ? "********" : maskUrlPasswords(value);
+}
+
+/** True when showing `value` would show a secret, so commands that would print it leave it out. */
+export const holdsSecret = (name: string, value: string) =>
+	masked(name, value) !== value;
 
 export function shown(
 	name: string,
 	value: string | undefined,
 	o: RenderOptions,
 ): string | undefined {
-	return value === undefined || o.showSecrets || !isSecret(name)
-		? value
-		: "********";
+	return value === undefined || o.showSecrets ? value : masked(name, value);
 }
 
 export function paint(o: RenderOptions) {

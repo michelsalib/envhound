@@ -102,7 +102,7 @@ rename. Downloads are https only.
 | `envhound edit [FILE…]` | interactive editor for variables, `PATH` and `.env` files (see below) |
 | `envhound completion bash\|zsh\|fish\|powershell` | a shell completion script (commands, flags, live variable names) |
 
-Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, … are masked by default), `--home DIR`,
+Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, `*_PAT`, … and passwords in URLs such as `postgres://user:********@host` are masked by default), `--home DIR`,
 and for changes `--file FILE`, `--yes`, `--dry-run`, `--append`.
 
 `blame` also tells you when an assignment doesn't stick:

@@ -3,7 +3,7 @@
 // (HKLM) come first in PATH and lose to the user's for other variables.
 import { chain, dirKey, lookup, splitPath } from "./analyze.ts";
 import type { FileChange } from "./edit.ts";
-import { isSecret } from "./format.ts";
+import { holdsSecret } from "./format.ts";
 import type { Trace } from "./model.ts";
 import type { Check, EditOp, Plan } from "./set.ts";
 import {
@@ -206,7 +206,7 @@ export function powershellCommands(
 	return ops.flatMap((op) => {
 		switch (op.kind) {
 			case "set":
-				if (!showSecrets && isSecret(op.name))
+				if (!showSecrets && holdsSecret(op.name, op.value))
 					return [
 						`# $env:${op.name} = …  (value hidden; --show-secrets prints this command)`,
 					];

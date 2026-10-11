@@ -102,7 +102,8 @@ const HELP = `Usage:
 
 Options:
   --json              machine-readable output (list, blame, path, dotenv)
-  --show-secrets      don't mask values of variables like *_TOKEN or *_KEY
+  --show-secrets      don't mask values of variables like *_TOKEN, *_KEY or *_PAT,
+                      or passwords in URLs (postgres://user:********@host)
   --home DIR          act as if HOME were DIR (on Windows: only for backups)
   -f, --file FILE     set/unset: edit this .env file instead of the shell
   -y, --yes           set/unset/path: write without asking
