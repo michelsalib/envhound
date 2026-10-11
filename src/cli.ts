@@ -549,11 +549,13 @@ async function edit(
 		: verify(shellOps, traceShell(values.home), loc, fresh);
 	for (const check of checks)
 		console.log(
-			check.ok ? c.green(`✓ ${check.message}`) : c.yellow(`! ${check.message}`),
+			check.ok
+				? c.green(`✓ ${tilde(check.message, opts.home)}`)
+				: c.yellow(`! ${tilde(check.message, opts.home)}`),
 		);
 	const commands = WINDOWS
 		? powershellCommands(shellOps, opts.showSecrets)
-		: currentShellCommands(shellOps, opts.showSecrets);
+		: currentShellCommands(shellOps, opts.showSecrets, opts.home);
 	const how = WINDOWS
 		? "This terminal is unchanged. To apply it here too, run in PowerShell:"
 		: "This shell is unchanged. To apply it here too, run:";
