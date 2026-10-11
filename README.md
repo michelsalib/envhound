@@ -18,6 +18,10 @@
 Why is `~/.local/bin` in your `PATH` twice? Which of your dotfiles sets `EDITOR`, and why does a new terminal
 not pick up the value you just changed? envhound answers those in one command, by replaying how your shell
 starts (or, on Windows, how the registry is read) and pointing at the exact line or key behind every value.
+
+<p align="center">
+  <img src="docs/demo.gif" width="860" alt="envhound blame PATH credits each PATH entry to its startup line; envhound why python3 shows the pyenv shim wins over two other copies; envhound blame EDITOR shows ~/.zshrc overrides ~/.zshenv; envhound set EDITOR=code --dry-run warns that ~/.zshrc would still win and shows the diff">
+</p>
 When you want to change something, it shows a diff, backs up, writes, and checks the result.
 
 **Try it, nothing to install:**

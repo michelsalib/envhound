@@ -83,7 +83,7 @@ export function planShell(ops: EditOp[], loc: Locations, trace: Trace): Plan {
 				const later = elsewhere.filter(runsAfter);
 				if (later.length)
 					notes.push(
-						`${op.name} is also set at ${at(later)}, which runs after ${tilde(login, loc.home)}: that line wins over envhound's, remove it or change it there`,
+						`${op.name} is also set at ${at(later)}, which runs after ${tilde(login, loc.home)} and wins: remove that line or change it there`,
 					);
 				else if (elsewhere.length)
 					notes.push(

@@ -2,6 +2,12 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Changed
+
+- The note when `~/.zshrc` or `~/.zlogin` sets a variable after envhound's line is shorter.
+
 ## 0.4.0 (2026-10-11)
 
 ### Added
