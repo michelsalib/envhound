@@ -19,7 +19,7 @@ import {
 	varViews,
 } from "../src/tui/state.ts";
 import { cmdArg, editorCommand, windowsCommand } from "../src/tui/terminal.ts";
-import { render } from "../src/tui/view.ts";
+import { render, wrap } from "../src/tui/view.ts";
 
 const ENV = join(process.cwd(), ".env");
 const data = (): Data => ({
@@ -490,4 +490,25 @@ test("windowsCommand: programs start directly, scripts through cmd.exe with ever
 		'"C:\\Program^ Files\\VS^ Code\\bin\\code.cmd ^"--wait^" ^"-g^" ^"C:\\p\\.env:7^""',
 	]);
 	expect(opts).toEqual({ windowsVerbatimArguments: true });
+});
+
+test("the selected entry's detail wraps, so a long path is shown whole", () => {
+	const long = `/opt/${"very-long-directory-name/".repeat(6)}bin`;
+	const d = data();
+	d.path = [
+		{ dir: long, by: "~/.profile:3", managed: false, exists: true },
+		...d.path,
+	];
+	const s: State = { ...initialState(d), tab: 1 };
+	const lines = render(s, 40, 20, { color: false });
+	expect(lines).toHaveLength(20);
+	expect(lines.every((l) => [...l].length <= 40)).toBe(true);
+	// the table cuts it, the detail lines below the rule hold all of it
+	const rule = lines.lastIndexOf("─".repeat(40));
+	const detail = lines
+		.slice(rule + 1, -2)
+		.map((l) => l.trimEnd())
+		.join("");
+	expect(detail).toContain(long);
+	expect(wrap("abcdefgh", 3, 2)).toEqual(["abc", "de…"]);
 });
