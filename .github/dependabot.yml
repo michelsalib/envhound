@@ -1,0 +1,22 @@
+# Weekly update PRs for dev dependencies and the pinned GitHub Actions. A release must be two
+# weeks old before it is proposed: compromised versions are usually caught and pulled by then.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      dev-dependencies:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ["*"]

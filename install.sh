@@ -3,17 +3,28 @@
 #   curl -fsSL https://github.com/michelsalib/envhound/releases/latest/download/install.sh | sh
 #
 # ENVHOUND_INSTALL_DIR  where to put `envhound` (default ~/.local/bin)
-# ENVHOUND_VERSION      a version such as 0.2.0 (default: the latest release)
-# ENVHOUND_BASE_URL     where envhound.js and SHA256SUMS are downloaded from (mirrors, tests)
+# ENVHOUND_VERSION      a version such as 0.2.1 (default: the latest release)
+# ENVHOUND_BASE_URL     where envhound.js and SHA256SUMS are downloaded from: https://, or file:// (mirrors, tests)
 # ENVHOUND_NO_COMPLETION=1  don't install shell completion
 #
 # envhound is one JavaScript file: it needs Node >= 20 or Bun, whichever is installed.
 set -eu
 
+# Everything runs from main, called on the last line: if the download is cut short,
+# sh reads a function that never closes and runs nothing.
+main() {
+say() { printf '%s\n' "$*"; }
+fail() { printf 'envhound install: %s\n' "$*" >&2; exit 1; }
+
 repo=michelsalib/envhound
 dir=${ENVHOUND_INSTALL_DIR:-$HOME/.local/bin}
 version=${ENVHOUND_VERSION:-latest}
 version=${version#v}
+case $version in
+  latest) ;;
+  *) printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' ||
+    fail "ENVHOUND_VERSION must look like 0.2.1, not $version" ;;
+esac
 if [ -n "${ENVHOUND_BASE_URL:-}" ]; then
   base=$ENVHOUND_BASE_URL
 elif [ "$version" = latest ]; then
@@ -22,8 +33,11 @@ else
   base=https://github.com/$repo/releases/download/v$version
 fi
 
-say() { printf '%s\n' "$*"; }
-fail() { printf 'envhound install: %s\n' "$*" >&2; exit 1; }
+# https only (file: for local mirrors and tests), redirects included
+case $base in
+  https://* | file://*) ;;
+  *) fail "ENVHOUND_BASE_URL must start with https://, not $base" ;;
+esac
 
 # the runtime: Node >= 20 first, then Bun
 if command -v node >/dev/null 2>&1 &&
@@ -36,9 +50,9 @@ else
 fi
 
 if command -v curl >/dev/null 2>&1; then
-  download() { curl -fsSL "$1" -o "$2"; }
+  download() { curl --proto '=https,file' --proto-redir '=https' --tlsv1.2 -fsSL "$1" -o "$2"; }
 elif command -v wget >/dev/null 2>&1; then
-  download() { wget -qO "$2" "$1"; }
+  download() { wget --secure-protocol=TLSv1_2 -qO "$2" "$1"; }
 else
   fail "needs curl or wget to download envhound"
 fi
@@ -108,3 +122,6 @@ case ":$PATH:" in
   *) say "$dir is not in your PATH. To add it for new shells, run:"
      say "  $dir/envhound path add $dir" ;;
 esac
+}
+
+main "$@"

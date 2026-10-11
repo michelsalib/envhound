@@ -1,248 +1,445 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	copyFileSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lineDiff } from "../src/diff.ts";
-import { applyChanges } from "../src/edit.ts";
-import { parseDotenv, serializeDotenv, setKey, unsetKey } from "../src/dotenv.ts";
-import { HEADER, addPath, parseManaged, removePath, serializeManaged, setVar, unsetVar } from "../src/managed.ts";
+import {
+	parseDotenv,
+	serializeDotenv,
+	setKey,
+	unsetKey,
+} from "../src/dotenv.ts";
+import { applyChanges, pruneBackups } from "../src/edit.ts";
+import {
+	addPath,
+	HEADER,
+	parseManaged,
+	removePath,
+	serializeManaged,
+	setVar,
+	unsetVar,
+} from "../src/managed.ts";
 import { dotenvQuote, shellQuote } from "../src/quote.ts";
 import { currentShellCommands, isPathName } from "../src/set.ts";
 import { words } from "../src/shellwords.ts";
 
-const TRICKY = ["plain", "", "with space", "it's", 'a "b" $c `d`', "tab\there", "multi\nline", "~/not-expanded", "#hash", "café ☕", "back\\slash"];
+const TRICKY = [
+	"plain",
+	"",
+	"with space",
+	"it's",
+	'a "b" $c `d`',
+	"tab\there",
+	"multi\nline",
+	"~/not-expanded",
+	"#hash",
+	"café ☕",
+	"back\\slash",
+];
 
 describe("quoting round-trips", () => {
-  test.each(TRICKY)("shell: %j", (v) => {
-    expect(words(shellQuote(v))).toEqual([v]);
-    expect(shellQuote(v)).not.toContain("\n");
-  });
-  test.skipIf(process.platform === "win32").each(TRICKY)("real bash agrees: %j", (v) => {
-    const r = spawnSync("bash", ["-c", `printf %s ${shellQuote(v)}`], { encoding: "utf8" });
-    expect(r.stdout).toBe(v);
-  });
-  test.each(TRICKY)(".env: %j", (v) => expect(parseDotenv(`K=${dotenvQuote(v)}\n`).lines[0]?.value).toBe(v));
+	test.each(TRICKY)("shell: %j", (v) => {
+		expect(words(shellQuote(v))).toEqual([v]);
+		expect(shellQuote(v)).not.toContain("\n");
+	});
+	test.skipIf(process.platform === "win32").each(TRICKY)(
+		"real bash agrees: %j",
+		(v) => {
+			const r = spawnSync("bash", ["-c", `printf %s ${shellQuote(v)}`], {
+				encoding: "utf8",
+			});
+			expect(r.stdout).toBe(v);
+		},
+	);
+	test.each(TRICKY)(".env: %j", (v) =>
+		expect(parseDotenv(`K=${dotenvQuote(v)}\n`).lines[0]?.value).toBe(v),
+	);
 });
 
 describe("managed file", () => {
-  const home = "/home/u";
-  test("set, replace, unset", () => {
-    let lines = parseManaged(HEADER, home);
-    lines = setVar(lines, "A", "1");
-    lines = setVar(lines, "B", "x y");
-    lines = setVar(lines, "A", "2");
-    expect(serializeManaged(lines)).toBe(HEADER + "export A=2\nexport B='x y'\n");
-    expect(serializeManaged(unsetVar(lines, "A"))).toBe(HEADER + "export B='x y'\n");
-  });
-  test("PATH lines parse back, use $HOME, and are not added twice", () => {
-    let lines = addPath(parseManaged("", home), "/home/u/bin", "front", home);
-    lines = addPath(lines, "/opt/x y", "back", home);
-    const reparsed = parseManaged(serializeManaged(lines), home);
-    expect(reparsed.map((l) => [l.kind, l.dir, l.position])).toEqual([
-      ["path", "/home/u/bin", "front"],
-      ["path", "/opt/x y", "back"],
-    ]);
-    expect(reparsed[0]?.raw).toContain('"$HOME/bin:$PATH"');
-    expect(addPath(reparsed, "/home/u/bin", "front", home)).toBe(reparsed);
-    expect(removePath(reparsed, "/home/u/bin").map((l) => l.dir)).toEqual(["/opt/x y"]);
-  });
-  test("unrecognised lines survive", () => {
-    const text = "# mine\nalias ll='ls -l'\nexport A=1\n";
-    expect(serializeManaged(setVar(parseManaged(text, home), "A", "2"))).toBe("# mine\nalias ll='ls -l'\nexport A=2\n");
-  });
+	const home = "/home/u";
+	test("set, replace, unset", () => {
+		let lines = parseManaged(HEADER, home);
+		lines = setVar(lines, "A", "1");
+		lines = setVar(lines, "B", "x y");
+		lines = setVar(lines, "A", "2");
+		expect(serializeManaged(lines)).toBe(
+			HEADER + "export A=2\nexport B='x y'\n",
+		);
+		expect(serializeManaged(unsetVar(lines, "A"))).toBe(
+			HEADER + "export B='x y'\n",
+		);
+	});
+	test("PATH lines parse back, use $HOME, and are not added twice", () => {
+		let lines = addPath(parseManaged("", home), "/home/u/bin", "front", home);
+		lines = addPath(lines, "/opt/x y", "back", home);
+		const reparsed = parseManaged(serializeManaged(lines), home);
+		expect(reparsed.map((l) => [l.kind, l.dir, l.position])).toEqual([
+			["path", "/home/u/bin", "front"],
+			["path", "/opt/x y", "back"],
+		]);
+		expect(reparsed[0]?.raw).toContain('"$HOME/bin:$PATH"');
+		expect(addPath(reparsed, "/home/u/bin", "front", home)).toBe(reparsed);
+		expect(removePath(reparsed, "/home/u/bin").map((l) => l.dir)).toEqual([
+			"/opt/x y",
+		]);
+	});
+	test("unrecognised lines survive", () => {
+		const text = "# mine\nalias ll='ls -l'\nexport A=1\n";
+		expect(serializeManaged(setVar(parseManaged(text, home), "A", "2"))).toBe(
+			"# mine\nalias ll='ls -l'\nexport A=2\n",
+		);
+	});
 });
 
 describe(".env edits", () => {
-  const text = "# top\nexport A='old'   # keep me\nB=1\nB=2\nC=3";
-  test("set keeps export, quote style, inline comment and every other byte", () => {
-    const out = serializeDotenv(setKey(parseDotenv(text), "A", "new"));
-    expect(out).toBe("# top\nexport A='new'   # keep me\nB=1\nB=2\nC=3");
-  });
-  test("set changes the last duplicate, the one loaders use", () =>
-    expect(serializeDotenv(setKey(parseDotenv(text), "B", "9"))).toBe("# top\nexport A='old'   # keep me\nB=1\nB=9\nC=3"));
-  test("append adds a newline after a last line that had none", () =>
-    expect(serializeDotenv(setKey(parseDotenv(text), "D", "4"))).toEndWith("C=3\nD=4\n"));
-  test("set into an empty file", () => expect(serializeDotenv(setKey(parseDotenv(""), "K", "v"))).toBe("K=v\n"));
-  test("unset removes every line for the key", () =>
-    expect(serializeDotenv(unsetKey(parseDotenv(text), "B"))).toBe("# top\nexport A='old'   # keep me\nC=3"));
+	const text = "# top\nexport A='old'   # keep me\nB=1\nB=2\nC=3";
+	test("set keeps export, quote style, inline comment and every other byte", () => {
+		const out = serializeDotenv(setKey(parseDotenv(text), "A", "new"));
+		expect(out).toBe("# top\nexport A='new'   # keep me\nB=1\nB=2\nC=3");
+	});
+	test("set changes the last duplicate, the one loaders use", () =>
+		expect(serializeDotenv(setKey(parseDotenv(text), "B", "9"))).toBe(
+			"# top\nexport A='old'   # keep me\nB=1\nB=9\nC=3",
+		));
+	test("append adds a newline after a last line that had none", () =>
+		expect(serializeDotenv(setKey(parseDotenv(text), "D", "4"))).toEndWith(
+			"C=3\nD=4\n",
+		));
+	test("set into an empty file", () =>
+		expect(serializeDotenv(setKey(parseDotenv(""), "K", "v"))).toBe("K=v\n"));
+	test("unset removes every line for the key", () =>
+		expect(serializeDotenv(unsetKey(parseDotenv(text), "B"))).toBe(
+			"# top\nexport A='old'   # keep me\nC=3",
+		));
 });
 
 test("lineDiff: removals before additions", () =>
-  expect(lineDiff(["a", "b", "c"], ["a", "x", "c"]).map((d) => d.op + d.text)).toEqual([" a", "-b", "+x", " c"]));
+	expect(
+		lineDiff(["a", "b", "c"], ["a", "x", "c"]).map((d) => d.op + d.text),
+	).toEqual([" a", "-b", "+x", " c"]));
 
 // shell changes need bash; .env changes work everywhere
 const bashTest = test.skipIf(process.platform === "win32");
 
 describe("envhound set / unset / path end to end", () => {
-  const root = join(import.meta.dir, "..");
-  const fixture = join(import.meta.dir, "fixtures", "home");
-  const freshHome = () => {
-    const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
-    for (const f of [".bash_profile", ".bashrc"]) copyFileSync(join(fixture, f), join(home, f));
-    return home;
-  };
-  const env = { ...process.env, XDG_CONFIG_HOME: "/nonexistent", XDG_STATE_HOME: "/nonexistent" };
-  const envhound = (home: string, ...args: string[]) =>
-    spawnSync("bun", ["src/cli.ts", "--home", home, ...args], { cwd: root, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+	const root = join(import.meta.dir, "..");
+	const fixture = join(import.meta.dir, "fixtures", "home");
+	const freshHome = () => {
+		const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
+		for (const f of [".bash_profile", ".bashrc"])
+			copyFileSync(join(fixture, f), join(home, f));
+		return home;
+	};
+	const env = {
+		...process.env,
+		XDG_CONFIG_HOME: "/nonexistent",
+		XDG_STATE_HOME: "/nonexistent",
+	};
+	const envhound = (home: string, ...args: string[]) =>
+		spawnSync("bun", ["src/cli.ts", "--home", home, ...args], {
+			cwd: root,
+			encoding: "utf8",
+			env,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
 
-  bashTest("set writes the managed file and the hook once, and a fresh shell sees it", () => {
-    const home = freshHome();
-    const r = envhound(home, "set", "EDITOR=code", "MSG=it's here", "--yes");
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain("✓ a fresh login shell now gets EDITOR");
-    expect(r.stdout).toContain("EDITOR is also set at ~/.bash_profile:1");
-    const managed = join(home, ".config", "envhound", "env.sh");
-    expect(statSync(managed).mode & 0o777).toBe(0o600);
-    expect(envhound(home, "set", "EDITOR=vim", "--yes").status).toBe(0);
-    expect(readFileSync(join(home, ".bash_profile"), "utf8").match(/envhound\/env\.sh/g)).toHaveLength(2); // one hook line
-    expect(readFileSync(managed, "utf8")).toEndWith("export EDITOR=vim\nexport MSG='it'\\''s here'\n");
-    expect(spawnSync("ls", [join(home, ".local", "state", "envhound", "backups")], { encoding: "utf8" }).stdout).toContain("env.sh");
-  });
+	bashTest(
+		"set writes the managed file and the hook once, and a fresh shell sees it",
+		() => {
+			const home = freshHome();
+			const r = envhound(home, "set", "EDITOR=code", "MSG=it's here", "--yes");
+			expect(r.status).toBe(0);
+			expect(r.stdout).toContain("✓ a fresh login shell now gets EDITOR");
+			expect(r.stdout).toContain("EDITOR is also set at ~/.bash_profile:1");
+			const managed = join(home, ".config", "envhound", "env.sh");
+			expect(statSync(managed).mode & 0o777).toBe(0o600);
+			expect(envhound(home, "set", "EDITOR=vim", "--yes").status).toBe(0);
+			expect(
+				readFileSync(join(home, ".bash_profile"), "utf8").match(
+					/envhound\/env\.sh/g,
+				),
+			).toHaveLength(2); // one hook line
+			expect(readFileSync(managed, "utf8")).toEndWith(
+				"export EDITOR=vim\nexport MSG='it'\\''s here'\n",
+			);
+			expect(
+				spawnSync(
+					"ls",
+					[join(home, ".local", "state", "envhound", "backups")],
+					{ encoding: "utf8" },
+				).stdout,
+			).toContain("env.sh");
+		},
+	);
 
-  bashTest("a later assignment is reported, with exit 1", () => {
-    const home = freshHome();
-    // something after the hook overrides envhound
-    envhound(home, "set", "LATE=envhound", "--yes");
-    writeFileSync(join(home, ".bash_profile"), readFileSync(join(home, ".bash_profile"), "utf8") + "export LATE=other\n");
-    const r = envhound(home, "set", "LATE=again", "--yes");
-    expect(r.status).toBe(1);
-    expect(r.stdout).toMatch(/does not get LATE: ~\/\.bash_profile:\d+ sets it again after envhound/);
-  });
+	bashTest("a later assignment is reported, with exit 1", () => {
+		const home = freshHome();
+		// something after the hook overrides envhound
+		envhound(home, "set", "LATE=envhound", "--yes");
+		writeFileSync(
+			join(home, ".bash_profile"),
+			readFileSync(join(home, ".bash_profile"), "utf8") + "export LATE=other\n",
+		);
+		const r = envhound(home, "set", "LATE=again", "--yes");
+		expect(r.status).toBe(1);
+		expect(r.stdout).toMatch(
+			/does not get LATE: ~\/\.bash_profile:\d+ sets it again after envhound/,
+		);
+	});
 
-  bashTest("path add / remove", () => {
-    const home = freshHome();
-    const dir = join(home, "tools");
-    mkdirSync(dir);
-    expect(envhound(home, "path", "add", dir, "--yes").stdout).toContain("is now in PATH");
-    expect(envhound(home, "path", "add", dir, "--yes").stdout).toContain("Nothing to change.");
-    expect(envhound(home, "path", "remove", dir, "--yes").stdout).toContain("is no longer in PATH");
-  });
+	bashTest("path add / remove", () => {
+		const home = freshHome();
+		const dir = join(home, "tools");
+		mkdirSync(dir);
+		expect(envhound(home, "path", "add", dir, "--yes").stdout).toContain(
+			"is now in PATH",
+		);
+		expect(envhound(home, "path", "add", dir, "--yes").stdout).toContain(
+			"Nothing to change.",
+		);
+		expect(envhound(home, "path", "remove", dir, "--yes").stdout).toContain(
+			"is no longer in PATH",
+		);
+	});
 
-  bashTest("refuses to write without a terminal unless --yes; --dry-run writes nothing", () => {
-    const home = freshHome();
-    expect(envhound(home, "set", "A=1").status).toBe(1);
-    expect(envhound(home, "set", "A=1", "--dry-run").stdout).toContain("+ export A=1");
-    expect(spawnSync("test", ["-e", join(home, ".config", "envhound", "env.sh")]).status).toBe(1);
-  });
+	bashTest(
+		"refuses to write without a terminal unless --yes; --dry-run writes nothing",
+		() => {
+			const home = freshHome();
+			expect(envhound(home, "set", "A=1").status).toBe(1);
+			expect(envhound(home, "set", "A=1", "--dry-run").stdout).toContain(
+				"+ export A=1",
+			);
+			expect(
+				spawnSync("test", ["-e", join(home, ".config", "envhound", "env.sh")])
+					.status,
+			).toBe(1);
+		},
+	);
 
-  test("bad input", () => {
-    const home = freshHome();
-    expect(envhound(home, "set", "PATH=/x").stderr).toContain("envhound path add");
-    expect(envhound(home, "unset", "PATH").stderr).toContain("envhound path remove");
-    expect(envhound(home, "set", "1BAD=x").status).toBe(2);
-    expect(envhound(home, "set", "NOEQUALS").status).toBe(2);
-  });
+	test("bad input", () => {
+		const home = freshHome();
+		expect(envhound(home, "set", "PATH=/x").stderr).toContain(
+			"envhound path add",
+		);
+		expect(envhound(home, "unset", "PATH").stderr).toContain(
+			"envhound path remove",
+		);
+		expect(envhound(home, "set", "1BAD=x").status).toBe(2);
+		expect(envhound(home, "set", "NOEQUALS").status).toBe(2);
+	});
 
-  test("--file edits a .env file and masks secrets in the diff", () => {
-    const home = freshHome();
-    const file = join(home, ".env");
-    writeFileSync(file, "# app\nAPI_TOKEN=old\n");
-    const r = envhound(home, "set", "--file", file, "API_TOKEN=new", "PORT=3000", "--yes");
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain("+ API_TOKEN=********");
-    expect(r.stdout).not.toContain("new");
-    expect(readFileSync(file, "utf8")).toBe("# app\nAPI_TOKEN=new\nPORT=3000\n");
-  });
+	test("--file edits a .env file and masks secrets in the diff", () => {
+		const home = freshHome();
+		const file = join(home, ".env");
+		writeFileSync(file, "# app\nAPI_TOKEN=old\n");
+		const r = envhound(
+			home,
+			"set",
+			"--file",
+			file,
+			"API_TOKEN=new",
+			"PORT=3000",
+			"--yes",
+		);
+		expect(r.status).toBe(0);
+		expect(r.stdout).toContain("+ API_TOKEN=********");
+		expect(r.stdout).not.toContain("new");
+		expect(readFileSync(file, "utf8")).toBe(
+			"# app\nAPI_TOKEN=new\nPORT=3000\n",
+		);
+	});
 });
 
 describe("applyChanges", () => {
-  const dir = () => mkdtempSync(join(tmpdir(), "envhound-apply-"));
+	const dir = () => mkdtempSync(join(tmpdir(), "envhound-apply-"));
 
-  test("two files with the same name get distinct backups", () => {
-    const d = dir();
-    const [a, b] = [join(d, "a", ".env"), join(d, "b", ".env")];
-    for (const f of [a, b]) {
-      mkdirSync(join(f, ".."));
-      writeFileSync(f, `old ${f}\n`);
-    }
-    const backups = applyChanges(
-      [a, b].map((f) => ({ path: f, before: `old ${f}\n`, after: "new\n" })),
-      join(d, "backups"),
-    );
-    expect(new Set(backups).size).toBe(2);
-    expect(backups.map((x) => readFileSync(x, "utf8")).sort()).toEqual([`old ${a}\n`, `old ${b}\n`].sort());
-  });
+	test("two files with the same name get distinct backups", () => {
+		const d = dir();
+		const [a, b] = [join(d, "a", ".env"), join(d, "b", ".env")];
+		for (const f of [a, b]) {
+			mkdirSync(join(f, ".."));
+			writeFileSync(f, `old ${f}\n`);
+		}
+		const backups = applyChanges(
+			[a, b].map((f) => ({ path: f, before: `old ${f}\n`, after: "new\n" })),
+			join(d, "backups"),
+		);
+		expect(new Set(backups).size).toBe(2);
+		expect(backups.map((x) => readFileSync(x, "utf8")).sort()).toEqual(
+			[`old ${a}\n`, `old ${b}\n`].sort(),
+		);
+	});
 
-  test.skipIf(process.platform === "win32")("writes through a symlink, keeps the file's mode, leaves no temporary file", () => {
-    const d = dir();
-    const real = join(d, "dotfiles-profile");
-    const link = join(d, ".profile");
-    writeFileSync(real, "a\n");
-    chmodSync(real, 0o640);
-    symlinkSync(real, link);
-    applyChanges([{ path: link, before: "a\n", after: "b\n" }], join(d, "backups"));
-    expect(lstatSync(link).isSymbolicLink()).toBe(true);
-    expect(readFileSync(real, "utf8")).toBe("b\n");
-    expect(statSync(real).mode & 0o777).toBe(0o640);
-    expect(readdirSync(d).sort()).toEqual([".profile", "backups", "dotfiles-profile"]);
-  });
+	test.skipIf(process.platform === "win32")(
+		"writes through a symlink, keeps the file's mode, leaves no temporary file",
+		() => {
+			const d = dir();
+			const real = join(d, "dotfiles-profile");
+			const link = join(d, ".profile");
+			writeFileSync(real, "a\n");
+			chmodSync(real, 0o640);
+			symlinkSync(real, link);
+			applyChanges(
+				[{ path: link, before: "a\n", after: "b\n" }],
+				join(d, "backups"),
+			);
+			expect(lstatSync(link).isSymbolicLink()).toBe(true);
+			expect(readFileSync(real, "utf8")).toBe("b\n");
+			expect(statSync(real).mode & 0o777).toBe(0o640);
+			expect(readdirSync(d).sort()).toEqual([
+				".profile",
+				"backups",
+				"dotfiles-profile",
+			]);
+		},
+	);
 
-  test("refuses to write anything when a file changed meanwhile", () => {
-    const d = dir();
-    const [a, b] = [join(d, "a"), join(d, "b")];
-    writeFileSync(a, "a\n");
-    writeFileSync(b, "changed\n");
-    expect(() =>
-      applyChanges(
-        [
-          { path: a, before: "a\n", after: "A\n" },
-          { path: b, before: "b\n", after: "B\n" },
-        ],
-        join(d, "backups"),
-      ),
-    ).toThrow("changed while envhound was running");
-    expect(readFileSync(a, "utf8")).toBe("a\n");
-  });
+	test("refuses to write anything when a file changed meanwhile", () => {
+		const d = dir();
+		const [a, b] = [join(d, "a"), join(d, "b")];
+		writeFileSync(a, "a\n");
+		writeFileSync(b, "changed\n");
+		expect(() =>
+			applyChanges(
+				[
+					{ path: a, before: "a\n", after: "A\n" },
+					{ path: b, before: "b\n", after: "B\n" },
+				],
+				join(d, "backups"),
+			),
+		).toThrow("changed while envhound was running");
+		expect(readFileSync(a, "utf8")).toBe("a\n");
+	});
 });
 
 test("commands for the current shell hide secret values unless asked", () => {
-  const ops = [{ kind: "set" as const, name: "API_TOKEN", value: "s3cret" }, { kind: "set" as const, name: "EDITOR", value: "vim" }];
-  expect(currentShellCommands(ops)).toEqual(["# export API_TOKEN=…  (value hidden; --show-secrets prints this command)", "export EDITOR=vim"]);
-  expect(currentShellCommands(ops, true)[0]).toBe("export API_TOKEN=s3cret");
+	const ops = [
+		{ kind: "set" as const, name: "API_TOKEN", value: "s3cret" },
+		{ kind: "set" as const, name: "EDITOR", value: "vim" },
+	];
+	expect(currentShellCommands(ops)).toEqual([
+		"# export API_TOKEN=…  (value hidden; --show-secrets prints this command)",
+		"export EDITOR=vim",
+	]);
+	expect(currentShellCommands(ops, true)[0]).toBe("export API_TOKEN=s3cret");
 });
 
 test("PATH is guarded by name, ignoring case only on Windows", () => {
-  expect(isPathName("PATH", false)).toBe(true);
-  expect(isPathName("Path", false)).toBe(false);
-  expect(isPathName("Path", true)).toBe(true);
-  expect(isPathName("path", true)).toBe(true);
+	expect(isPathName("PATH", false)).toBe(true);
+	expect(isPathName("Path", false)).toBe(false);
+	expect(isPathName("Path", true)).toBe(true);
+	expect(isPathName("path", true)).toBe(true);
 });
 
-describe.skipIf(process.platform === "win32")("login shell and trace environment", () => {
-  const root = join(import.meta.dir, "..");
-  const fixture = join(import.meta.dir, "fixtures", "home");
-  const run = (env: Record<string, string>, ...args: string[]) => {
-    const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
-    for (const f of [".bash_profile", ".bashrc"]) copyFileSync(join(fixture, f), join(home, f));
-    return spawnSync("bun", ["src/cli.ts", "--home", home, ...args], {
-      cwd: root,
-      encoding: "utf8",
-      env: { ...process.env, XDG_CONFIG_HOME: "/nonexistent", XDG_STATE_HOME: "/nonexistent", ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  };
+describe.skipIf(process.platform === "win32")(
+	"login shell and trace environment",
+	() => {
+		const root = join(import.meta.dir, "..");
+		const fixture = join(import.meta.dir, "fixtures", "home");
+		const run = (env: Record<string, string>, ...args: string[]) => {
+			const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
+			for (const f of [".bash_profile", ".bashrc"])
+				copyFileSync(join(fixture, f), join(home, f));
+			return spawnSync("bun", ["src/cli.ts", "--home", home, ...args], {
+				cwd: root,
+				encoding: "utf8",
+				env: {
+					...process.env,
+					XDG_CONFIG_HOME: "/nonexistent",
+					XDG_STATE_HOME: "/nonexistent",
+					...env,
+				},
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+		};
 
-  test("with zsh as login shell, set says bash is what it writes for and checks", () => {
-    const r = run({ SHELL: "/bin/zsh" }, "set", "EDITOR=vim", "--yes");
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain("note: your login shell is zsh, but envhound only writes for bash so far");
-    expect(r.stdout).toContain("✓ a fresh bash login shell now gets EDITOR");
-  });
+		test("with zsh as login shell, set says bash is what it writes for and checks", () => {
+			const r = run({ SHELL: "/bin/zsh" }, "set", "EDITOR=vim", "--yes");
+			expect(r.status).toBe(0);
+			expect(r.stdout).toContain(
+				"note: your login shell is zsh, but envhound only writes for bash so far",
+			);
+			expect(r.stdout).toContain("✓ a fresh bash login shell now gets EDITOR");
+		});
 
-  test("with zsh as login shell, list warns on stderr and keeps --json clean", () => {
-    const r = run({ SHELL: "/bin/zsh" }, "list", "--json");
-    expect(r.status).toBe(0);
-    expect(r.stderr).toContain("your login shell is zsh");
-    expect(() => JSON.parse(r.stdout)).not.toThrow();
-  });
+		test("with zsh as login shell, list warns on stderr and keeps --json clean", () => {
+			const r = run({ SHELL: "/bin/zsh" }, "list", "--json");
+			expect(r.status).toBe(0);
+			expect(r.stderr).toContain("your login shell is zsh");
+			expect(() => JSON.parse(r.stdout)).not.toThrow();
+		});
 
-  test("bash says nothing about the login shell", () => expect(run({ SHELL: "/bin/bash" }, "list").stderr).not.toContain("login shell"));
+		test("bash says nothing about the login shell", () =>
+			expect(run({ SHELL: "/bin/bash" }, "list").stderr).not.toContain(
+				"login shell",
+			));
 
-  test("a quote in TMPDIR doesn't break the trace", () => {
-    const tmp = mkdtempSync(join(tmpdir(), "it's-"));
-    const r = run({ TMPDIR: tmp }, "blame", "EDITOR");
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain(".bash_profile:1");
-  });
+		test("a quote in TMPDIR doesn't break the trace", () => {
+			const tmp = mkdtempSync(join(tmpdir(), "it's-"));
+			const r = run({ TMPDIR: tmp }, "blame", "EDITOR");
+			expect(r.status).toBe(0);
+			expect(r.stdout).toContain(".bash_profile:1");
+		});
+	},
+);
+
+test("only the newest 50 backups stay", () => {
+	const dir = mkdtempSync(join(tmpdir(), "envhound-backups-"));
+	for (let i = 0; i < 55; i++)
+		writeFileSync(
+			join(dir, `2026-10-${String(i).padStart(2, "0")}T00-00-00-000Z-.env`),
+			"",
+		);
+	pruneBackups(dir);
+	const left = readdirSync(dir).sort();
+	expect(left).toHaveLength(50);
+	expect(left[0]).toStartWith("2026-10-05");
+});
+
+describe.skipIf(process.platform === "win32")("set --stdin", () => {
+	const root = join(import.meta.dir, "..");
+	const run = (input: string, ...args: string[]) => {
+		const home = mkdtempSync(join(tmpdir(), "envhound-home-"));
+		writeFileSync(join(home, ".bash_profile"), "");
+		const r = spawnSync("bun", ["src/cli.ts", "--home", home, ...args], {
+			cwd: root,
+			input,
+			encoding: "utf8",
+			env: {
+				...process.env,
+				XDG_CONFIG_HOME: "/nonexistent",
+				XDG_STATE_HOME: "/nonexistent",
+			},
+		});
+		return { ...r, home };
+	};
+
+	test("reads the value, without its final newline, and never prints it", () => {
+		const r = run("s3cret value\n", "set", "GH_TOKEN", "--stdin", "--yes");
+		expect(r.status).toBe(0);
+		expect(
+			readFileSync(join(r.home, ".config", "envhound", "env.sh"), "utf8"),
+		).toContain("export GH_TOKEN='s3cret value'\n");
+		expect(r.stdout + r.stderr).not.toContain("s3cret");
+	});
+
+	test("takes exactly one bare NAME", () => {
+		expect(run("x", "set", "A=1", "--stdin", "--yes").status).toBe(2);
+		expect(run("x", "set", "A", "B", "--stdin", "--yes").status).toBe(2);
+		expect(run("x", "unset", "A", "--stdin", "--yes").status).toBe(2);
+	});
 });

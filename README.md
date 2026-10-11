@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/node/v/envhound" alt="Node version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue" alt="Linux, macOS and Windows">
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/envhound" alt="MIT license"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/michelsalib/envhound"><img src="https://api.scorecard.dev/projects/github.com/michelsalib/envhound/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 Why is `~/.local/bin` in your `PATH` twice? Which of your dotfiles sets `EDITOR`, and why does a new terminal
@@ -52,6 +53,14 @@ npm install -g envhound        # or: bun add -g envhound
 curl -fsSL https://github.com/michelsalib/envhound/releases/latest/download/install.sh | sh
 ```
 
+To pin a version, or to read the script before running it:
+
+```sh
+curl -fsSL https://github.com/michelsalib/envhound/releases/download/v0.2.1/install.sh -o install.sh
+less install.sh && sh install.sh
+gh attestation verify install.sh -R michelsalib/envhound   # optional: proves GitHub Actions built it
+```
+
 On Windows, in PowerShell:
 
 ```powershell
@@ -73,6 +82,12 @@ and when there is one says so after a command, at most once a week, with the upd
 installed it: `envhound upgrade` for `install.sh` and `install.ps1`, `npm install -g envhound@latest`, `npx envhound@latest`, and so on.
 It stays quiet in scripts, CI, with `--json` or `--home`, and with `ENVHOUND_NO_UPDATE_CHECK=1`.
 
+`envhound upgrade` never runs anything it downloads. It fetches the latest `envhound.js` from the GitHub
+release, checks it against the release's `SHA256SUMS`, and requires it to be byte for byte the file
+published in the npm package of the same version (whose integrity npm vouches for), so a tampered
+release would have to be tampered with on both GitHub and npm. Only then does it replace itself, in one
+rename. Downloads are https only.
+
 ## Commands
 
 | Command | What it shows |
@@ -88,7 +103,7 @@ It stays quiet in scripts, CI, with `--json` or `--home`, and with `ENVHOUND_NO_
 | `envhound edit [FILE…]` | interactive editor for variables, `PATH` and `.env` files (see below) |
 | `envhound completion bash\|zsh\|fish\|powershell` | a shell completion script (commands, flags, live variable names) |
 
-Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, … are masked by default), `--home DIR`,
+Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, `*_PAT`, … and passwords in URLs such as `postgres://user:********@host` are masked by default), `--home DIR`,
 and for changes `--file FILE`, `--yes`, `--dry-run`, `--append`.
 
 `blame` also tells you when an assignment doesn't stick:
@@ -120,7 +135,10 @@ This shell is unchanged. To apply it here too, run:
   files. The first time, it appends one line to your login file (`~/.bash_profile`, `~/.bash_login` or
   `~/.profile`, whichever bash reads) to load it. Being last, envhound's values win.
 - Every change is shown as a **diff** (secrets masked) and confirmed; `--yes` skips the question,
-  `--dry-run` only shows it. Changed files are **backed up** to `~/.local/state/envhound/backups/`.
+  `--dry-run` only shows it. Changed files are **backed up** to `~/.local/state/envhound/backups/` (the 50
+  most recent are kept, since they may hold secrets).
+- For a secret, `envhound set GH_TOKEN --stdin` reads the value from standard input, or lets you type it
+  unseen, so it stays out of your shell history and the process list.
 - After writing, envhound **re-traces** a fresh login shell to check the change took effect, and names the
   line that overrides it if not.
 - With `--file .env`, `set` and `unset` edit a `.env` file instead, changing only that key's line and keeping
@@ -146,6 +164,16 @@ backups in ~\AppData\Local\envhound\backups
 
 This terminal is unchanged. To apply it here too, run in PowerShell:
   $env:Path = 'C:\Users\me\go\bin;' + $env:Path
+```
+
+From an administrator terminal, `--machine` changes **the machine's variables** instead
+(`HKLM\…\Environment`, the "System variables" of that dialog), for every user. envhound checks that the
+terminal is elevated before anything else, backs the key up to a `.reg` file, and notes when your own
+variables override the machine's:
+
+```powershell
+envhound path add --machine "C:\Program Files\Tool\bin"
+envhound unset --machine OLD_VARIABLE
 ```
 
 - The diff shows each `Path` entry on its own line. Directories under your profile are stored as
@@ -243,18 +271,17 @@ bun run dev -- blame PATH   # run from source
 bun test                    # unit tests + real bash on test/fixtures/home + built CLI on node
                             # (on Windows: the registry, install.ps1 and PowerShell completion instead of bash)
 bun run typecheck
+bun run lint                # Biome: formatting and lint
 bun run build               # dist/envhound.js, plain JS for node >= 20
 ```
 
-Source uses only `node:` APIs so the build runs on both Node and Bun.
+Source uses only `node:` APIs so the build runs on both Node and Bun. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for pull requests and releases, and [SECURITY.md](SECURITY.md) to report a vulnerability or verify a release.
 
 ## Releasing
 
-```sh
-npm version patch           # or minor/major: bumps package.json, commits, tags vX.Y.Z
-git push --follow-tags
-```
-
-The tag starts [`.github/workflows/release.yml`](.github/workflows/release.yml): tests, then `npm publish`
-with provenance, then a GitHub release with `envhound.js`, `install.sh`, `install.ps1` and `SHA256SUMS`. npm needs either
-an `NPM_TOKEN` repository secret or trusted publishing configured for this workflow on npmjs.com.
+A pull request bumps `package.json` and the changelog; pushing a `vX.Y.Z` tag on the merged commit starts
+[`.github/workflows/release.yml`](.github/workflows/release.yml): tests on Linux, macOS and Windows, a
+read-only build, then, once approved in the `release` environment, signed build provenance for every file,
+`npm publish` through trusted publishing, and a GitHub release with `envhound.js`, `install.sh`,
+`install.ps1` and `SHA256SUMS`.

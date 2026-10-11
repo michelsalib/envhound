@@ -1,87 +1,106 @@
 // Weekly update check. The registry is asked at most once a week, by a detached
 // background process, so no command waits on the network; a later run prints the notice.
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { createHash } from "node:crypto";
+import {
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 
 export const REPO = "michelsalib/envhound";
-const REGISTRY = "https://registry.npmjs.org/envhound/latest";
+const REGISTRY = "https://registry.npmjs.org/envhound";
 export const WEEK = 7 * 24 * 3600 * 1000;
 
 /** How this copy of envhound was installed, which decides how to update it. */
 export type InstallKind = "npx" | "bunx" | "bun" | "npm" | "standalone" | "dev";
 
 export function installKind(script: string): InstallKind {
-  const p = script.replaceAll("\\", "/");
-  if (p.includes("/_npx/")) return "npx";
-  if (p.includes("/bunx-")) return "bunx";
-  if (p.includes("/.bun/install/global/")) return "bun";
-  if (p.includes("/node_modules/")) return "npm";
-  // install.ps1 installs envhound.mjs (with envhound.cmd next to it)
-  if (p.endsWith("/envhound.mjs")) return "standalone";
-  // a checkout: src/cli.ts or dist/envhound.js; install.sh installs a file named plain `envhound`
-  if (/\.[cm]?[jt]s$/.test(p)) return "dev";
-  return "standalone";
+	const p = script.replaceAll("\\", "/");
+	if (p.includes("/_npx/")) return "npx";
+	if (p.includes("/bunx-")) return "bunx";
+	if (p.includes("/.bun/install/global/")) return "bun";
+	if (p.includes("/node_modules/")) return "npm";
+	// install.ps1 installs envhound.mjs (with envhound.cmd next to it)
+	if (p.endsWith("/envhound.mjs")) return "standalone";
+	// a checkout: src/cli.ts or dist/envhound.js; install.sh installs a file named plain `envhound`
+	if (/\.[cm]?[jt]s$/.test(p)) return "dev";
+	return "standalone";
 }
 
 export function upgradeCommand(kind: InstallKind): string {
-  switch (kind) {
-    case "npx":
-      return "npx envhound@latest";
-    case "bunx":
-      return "bunx envhound@latest";
-    case "bun":
-      return "bun add -g envhound@latest";
-    case "npm":
-      return "npm install -g envhound@latest";
-    case "standalone":
-      return "envhound upgrade";
-    case "dev":
-      return "git pull && bun run build";
-  }
+	switch (kind) {
+		case "npx":
+			return "npx envhound@latest";
+		case "bunx":
+			return "bunx envhound@latest";
+		case "bun":
+			return "bun add -g envhound@latest";
+		case "npm":
+			return "npm install -g envhound@latest";
+		case "standalone":
+			return "envhound upgrade";
+		case "dev":
+			return "git pull && bun run build";
+	}
 }
 
 /** True when version `a` is newer than `b`; only major.minor.patch counts. */
 export function newer(a: string, b: string): boolean {
-  const parse = (v: string) => (v.match(/^v?(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
-  const [x, y] = [parse(a), parse(b)];
-  if (x.length !== 3 || y.length !== 3) return false;
-  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i]! > y[i]!;
-  return false;
+	const parse = (v: string) =>
+		(v.match(/^v?(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
+	const [x, y] = [parse(a), parse(b)];
+	if (x.length !== 3 || y.length !== 3) return false;
+	for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i]! > y[i]!;
+	return false;
 }
 
 export interface UpdateState {
-  /** when the registry was last asked (ms) */
-  checkedAt?: number;
-  /** the latest version it reported */
-  latest?: string;
-  /** when the notice was last shown (ms) */
-  notifiedAt?: number;
+	/** when the registry was last asked (ms) */
+	checkedAt?: number;
+	/** the latest version it reported */
+	latest?: string;
+	/** when the notice was last shown (ms) */
+	notifiedAt?: number;
 }
 
 /** Pure decision: ask the registry now? show the notice now? */
-export function decide(state: UpdateState, current: string, now: number): { check: boolean; notify: boolean } {
-  const due = (t?: number) => t === undefined || now - t >= WEEK || t > now;
-  return {
-    check: due(state.checkedAt),
-    notify: state.latest !== undefined && newer(state.latest, current) && due(state.notifiedAt),
-  };
+export function decide(
+	state: UpdateState,
+	current: string,
+	now: number,
+): { check: boolean; notify: boolean } {
+	const due = (t?: number) => t === undefined || now - t >= WEEK || t > now;
+	return {
+		check: due(state.checkedAt),
+		notify:
+			state.latest !== undefined &&
+			newer(state.latest, current) &&
+			due(state.notifiedAt),
+	};
 }
 
 export function readState(file: string): UpdateState {
-  try {
-    const s = JSON.parse(readFileSync(file, "utf8"));
-    return typeof s === "object" && s ? s : {};
-  } catch {
-    return {};
-  }
+	try {
+		const s = JSON.parse(readFileSync(file, "utf8"));
+		return typeof s === "object" && s ? s : {};
+	} catch {
+		return {};
+	}
 }
 
 function writeState(file: string, state: UpdateState): void {
-  mkdirSync(dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(state) + "\n");
-  renameSync(tmp, file);
+	mkdirSync(dirname(file), { recursive: true });
+	const tmp = `${file}.${process.pid}.tmp`;
+	writeFileSync(tmp, JSON.stringify(state) + "\n");
+	renameSync(tmp, file);
 }
 
 /**
@@ -89,35 +108,167 @@ function writeState(file: string, state: UpdateState): void {
  * returns the notice to print at the end, if a newer version is known and the
  * notice wasn't shown this week. Never throws: an update check must not break a command.
  */
-export function updateNotice(current: string, script: string, stateFile: string, now = Date.now()): string | undefined {
-  try {
-    const kind = installKind(realpathSync(script));
-    if (kind === "dev") return undefined;
-    const state = readState(stateFile);
-    const { check, notify } = decide(state, current, now);
-    if (check) {
-      // recorded first, so a failing network doesn't start a check on every run
-      writeState(stateFile, { ...state, checkedAt: now });
-      spawn(process.execPath, [script, "__update-check", stateFile], { detached: true, stdio: "ignore", windowsHide: true }).unref();
-    }
-    if (!notify) return undefined;
-    writeState(stateFile, { ...readState(stateFile), notifiedAt: now });
-    return `envhound ${state.latest} is available (you have ${current}). Update with: ${upgradeCommand(kind)}`;
-  } catch {
-    return undefined;
-  }
+export function updateNotice(
+	current: string,
+	script: string,
+	stateFile: string,
+	now = Date.now(),
+): string | undefined {
+	try {
+		const kind = installKind(realpathSync(script));
+		if (kind === "dev") return undefined;
+		const state = readState(stateFile);
+		const { check, notify } = decide(state, current, now);
+		if (check) {
+			// recorded first, so a failing network doesn't start a check on every run
+			writeState(stateFile, { ...state, checkedAt: now });
+			spawn(process.execPath, [script, "__update-check", stateFile], {
+				detached: true,
+				stdio: "ignore",
+				windowsHide: true,
+			}).unref();
+		}
+		if (!notify) return undefined;
+		writeState(stateFile, { ...readState(stateFile), notifiedAt: now });
+		return `envhound ${state.latest} is available (you have ${current}). Update with: ${upgradeCommand(kind)}`;
+	} catch {
+		return undefined;
+	}
 }
 
 /** The hidden `__update-check` command, run in the background by updateNotice. */
 export async function fetchLatest(stateFile: string): Promise<void> {
-  const res = await fetch(REGISTRY, { signal: AbortSignal.timeout(10_000), headers: { accept: "application/json" } });
-  if (!res.ok) return;
-  const { version } = (await res.json()) as { version?: unknown };
-  if (typeof version !== "string") return;
-  writeState(stateFile, { ...readState(stateFile), checkedAt: Date.now(), latest: version });
+	const res = await fetch(`${REGISTRY}/latest`, {
+		signal: AbortSignal.timeout(10_000),
+		headers: { accept: "application/json" },
+	});
+	if (!res.ok) return;
+	const { version } = (await res.json()) as { version?: unknown };
+	if (typeof version !== "string") return;
+	writeState(stateFile, {
+		...readState(stateFile),
+		checkedAt: Date.now(),
+		latest: version,
+	});
 }
 
-/** Where release files are downloaded from; ENVHOUND_BASE_URL overrides it (mirrors, tests). */
-export function installerUrl(env: Record<string, string | undefined>, windows = false): string {
-  return `${env.ENVHOUND_BASE_URL ?? `https://github.com/${REPO}/releases/latest/download`}/${windows ? "install.ps1" : "install.sh"}`;
+/** Downloads only over https (or from a local file: for mirrors and tests): never plain http. */
+export async function download(url: string): Promise<Buffer> {
+	if (url.startsWith("file:")) return readFileSync(fileURLToPath(url));
+	if (!url.startsWith("https://"))
+		throw new Error(`refusing to download ${url}: only https is allowed`);
+	const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+	if (!res.ok) throw new Error(`could not download ${url}: HTTP ${res.status}`);
+	return Buffer.from(await res.arrayBuffer());
+}
+
+const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+/** The hash SHA256SUMS lists for `name`, as sha256sum prints it. */
+export function sumFor(sums: string, name: string): string | undefined {
+	for (const line of sums.split(/\r?\n/)) {
+		const [sum, file] = line.trim().split(/\s+/, 2);
+		if (file === name || file === `*${name}`) return sum?.toLowerCase();
+	}
+	return undefined;
+}
+
+/** One file's content from a .tgz such as an npm package; only plain ustar entries, which npm writes. */
+export function tarFile(tgz: Buffer, path: string): Buffer | undefined {
+	const tar = gunzipSync(tgz);
+	const text = (at: number, len: number) =>
+		tar.toString("utf8", at, at + len).replace(/\0.*$/s, "");
+	for (let at = 0; at + 512 <= tar.length; ) {
+		const name = text(at, 100);
+		if (!name) return undefined; // the zero blocks at the end
+		const prefix = text(at + 345, 155);
+		const size = Number.parseInt(text(at + 124, 12).trim() || "0", 8);
+		const type = text(at + 156, 1);
+		const full = prefix ? `${prefix}/${name}` : name;
+		if (full === path && (type === "0" || type === ""))
+			return tar.subarray(at + 512, at + 512 + size);
+		at += 512 + Math.ceil(size / 512) * 512;
+	}
+	return undefined;
+}
+
+export interface Release {
+	version: string;
+	/** dist/envhound.js, the same bytes on GitHub and on npm */
+	script: Buffer;
+}
+
+/**
+ * The latest envhound, checked twice: against the release's SHA256SUMS, and against the copy npm
+ * published, which must be byte for byte the same. Replacing it means compromising both GitHub
+ * and npm. ENVHOUND_REGISTRY and ENVHOUND_BASE_URL point elsewhere (mirrors, tests).
+ */
+export async function latestRelease(
+	env: Record<string, string | undefined>,
+): Promise<Release> {
+	const registry = env.ENVHOUND_REGISTRY ?? REGISTRY;
+	const meta = JSON.parse(
+		(await download(`${registry}/latest`)).toString(),
+	) as {
+		version?: unknown;
+		dist?: { tarball?: unknown; integrity?: unknown };
+	};
+	const { version } = meta;
+	const tarball = meta.dist?.tarball;
+	const integrity = meta.dist?.integrity;
+	if (
+		typeof version !== "string" ||
+		!/^\d+\.\d+\.\d+$/.test(version) ||
+		typeof tarball !== "string" ||
+		typeof integrity !== "string"
+	)
+		throw new Error(`unexpected answer from ${registry}/latest`);
+
+	const base =
+		env.ENVHOUND_BASE_URL ??
+		`https://github.com/${REPO}/releases/download/v${version}`;
+	const script = await download(`${base}/envhound.js`);
+	const expected = sumFor(
+		(await download(`${base}/SHA256SUMS`)).toString(),
+		"envhound.js",
+	);
+	if (!expected) throw new Error("SHA256SUMS has no entry for envhound.js");
+	if (sha256(script) !== expected)
+		throw new Error("checksum mismatch for envhound.js");
+
+	const tgz = await download(tarball);
+	const [algorithm, digest] = integrity.split("-", 2);
+	if (
+		algorithm !== "sha512" ||
+		createHash("sha512").update(tgz).digest("base64") !== digest
+	)
+		throw new Error(
+			`the npm package for ${version} doesn't match its integrity`,
+		);
+	const published = tarFile(tgz, "package/dist/envhound.js");
+	if (!published?.equals(script))
+		throw new Error(
+			`envhound.js on GitHub is not the one published on npm for ${version}`,
+		);
+	return { version, script };
+}
+
+/**
+ * Put the new script in place of `target`: written beside it, then renamed over it, so a running
+ * envhound is never half-written. install.sh rewrites the first line for Bun; that choice is kept.
+ */
+export function replaceScript(target: string, script: Buffer): void {
+	const bun = readFileSync(target, "utf8").startsWith("#!/usr/bin/env bun");
+	const content = bun
+		? Buffer.from(
+				script.toString("utf8").replace(/^#!.*/, "#!/usr/bin/env bun"),
+			)
+		: script;
+	const tmp = join(dirname(target), `.${basename(target)}.new`);
+	rmSync(tmp, { force: true });
+	writeFileSync(tmp, content, {
+		mode: statSync(target).mode & 0o7777,
+		flag: "wx",
+	});
+	renameSync(tmp, target);
 }

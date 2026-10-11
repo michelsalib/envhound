@@ -1,0 +1,48 @@
+bash: no job control in this shell
+10/etc/profileexport PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+10/etc/profilePATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30/etc/profileexport PAGER=less
+30/etc/profilePAGER=less
+40/etc/profileumask 022
+70/etc/profile'[' -n '3.2.57(1)-release' -o '' ']'
+80/etc/profilePS1='\h:\w\$ '
+190/etc/profilefor script in '/etc/profile.d/*.sh'
+200/etc/profile'[' -r /etc/profile.d/20locale.sh ']'
+210/etc/profile. /etc/profile.d/20locale.sh
+121/etc/profile.d/20locale.shexport CHARSET=UTF-8
+121/etc/profile.d/20locale.shCHARSET=UTF-8
+221/etc/profile.d/20locale.shexport LANG=C.UTF-8
+221/etc/profile.d/20locale.shLANG=C.UTF-8
+321/etc/profile.d/20locale.shexport LC_COLLATE=C
+321/etc/profile.d/20locale.shLC_COLLATE=C
+240/etc/profileunset script
+10/Users/runner/work/envhound/envhound/test/fixtures/home/.bash_profileexport EDITOR=vim
+10/Users/runner/work/envhound/envhound/test/fixtures/home/.bash_profileEDITOR=vim
+20/Users/runner/work/envhound/envhound/test/fixtures/home/.bash_profilePATH=/Users/runner/work/envhound/envhound/test/fixtures/home/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30/Users/runner/work/envhound/envhound/test/fixtures/home/.bash_profile. /Users/runner/work/envhound/envhound/test/fixtures/home/.bashrc
+23/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcadd_path /opt/envhound-test/bin
+1add_path2/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrc=case ":$PATH:" in
+0add_path2/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrc=PATH=/Users/runner/work/envhound/envhound/test/fixtures/home/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/envhound-test/bin
+33/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcPATH+=:/Users/runner/work/envhound/envhound/test/fixtures/home/bin
+43/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcexport 'QUOTED=it'\''s "quoted"'
+43/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcQUOTED='it'\''s "quoted"'
+53/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcMULTI='line1
+line2'
+53/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcexport MULTI
+63/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcexport 'UNICODE=café ☕'
+63/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcUNICODE='café ☕'
+73/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcSHELL=/bin/sh
+73/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrctrue
+93/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcscoped
+0scoped9/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrc=local LOCALVAR=1
+0scoped9/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrc=LOCALVAR=2
+103/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcexport API_TOKEN=hunter2
+103/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcAPI_TOKEN=hunter2
+113/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcTEMP=1
+113/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcexport TEMP
+113/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcunset TEMP
+123/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcSHELLONLY=yes
+133/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcexport GREETING=hello
+133/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcGREETING=hello
+143/Users/runner/work/envhound/envhound/test/fixtures/home/.bashrcGREETING+=' world'
+0/usr/bin/env -0
