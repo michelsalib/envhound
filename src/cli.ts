@@ -11,6 +11,7 @@ import {
 	completionScript,
 	SHELLS,
 } from "./completion.ts";
+import { doctor } from "./doctor.ts";
 import {
 	compareDotenv,
 	dotenvProblems,
@@ -31,6 +32,7 @@ import {
 	paint,
 	type RenderOptions,
 	renderBlame,
+	renderDoctor,
 	renderDotenv,
 	renderList,
 	renderPath,
@@ -81,6 +83,11 @@ const HELP = `Usage:
   envhound [list]        every exported variable, with the startup file:line that sets it
   envhound blame VAR     every startup file:line that assigns VAR, in order
                          (for PATH: what each step added or removed)
+  envhound doctor        every problem with the environment a new shell gets:
+                         PATH entries that are missing, duplicated, relative or
+                         writable by anyone, version managers fighting, variables
+                         not exported or set in several files, readable secrets;
+                         each with where it comes from and a fix. Exits 1 on errors
   envhound why COMMAND   which file COMMAND runs, the PATH entry and startup line
                          that put it first, the ones it hides, and whether a
                          fresh login shell would run another
@@ -119,7 +126,7 @@ const HELP = `Usage:
                          the download must match SHA256SUMS and the npm package
 
 Options:
-  --json              machine-readable output (list, blame, why, path, dotenv)
+  --json              machine-readable output (list, blame, why, path, doctor, dotenv)
   --show-secrets      don't mask values of variables like *_TOKEN, *_KEY or *_PAT,
                       or passwords in URLs (postgres://user:********@host)
   --home DIR          act as if HOME were DIR (on Windows: only for backups)
@@ -310,6 +317,20 @@ async function main(argv: string[]): Promise<number> {
 				() => blameJson(report, opts),
 			);
 			return 0;
+		}
+		case "doctor": {
+			const loc = locations(opts.home, process.env, values.home !== undefined);
+			const findings = doctor({
+				trace: trace(),
+				env: process.env,
+				home: opts.home,
+				managed: loc.managed,
+			});
+			print(
+				() => renderDoctor(findings, opts),
+				() => findings,
+			);
+			return findings.some((f) => f.severity === "error") ? 1 : 0;
 		}
 		case "why": {
 			const cmd = args[0];

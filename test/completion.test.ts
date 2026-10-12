@@ -15,6 +15,7 @@ describe("complete", () => {
 			"list",
 			"blame",
 			"why",
+			"doctor",
 			"path",
 			"dotenv",
 			"set",
