@@ -13,6 +13,13 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
   no effect, set in several of your files, zsh exports only `~/.zshrc` makes, secrets in startup
   files others can read). `--json`; exits 1 on errors.
 
+### Changed
+
+- `--help` is contextual: `envhound --help` lists the commands grouped by what they are for, and
+  `envhound COMMAND --help` (or `envhound help COMMAND`, `envhound path add --help`) shows that
+  command's usage, what it does, only the options it takes, and examples. A usage error points
+  at the command's own help.
+
 ## 0.4.3 (2026-10-12)
 
 ### Changed
