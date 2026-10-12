@@ -287,6 +287,16 @@ difference between this terminal and a new one.
 
 Planned: fish, PowerShell profiles, and a `.deb`.
 
+## The pack
+
+envhound has a sibling, built the same way: one small file for Node or Bun, or a standalone binary,
+nothing to configure.
+
+| Tool | What it finds | Try it |
+|---|---|---|
+| **envhound** | which startup file (or registry key) sets each environment variable, and your `PATH` | `npx envhound` |
+| **[netbeagle](https://github.com/michelsalib/netbeagle)** | which process or container listens on each port, who can reach it, and how everything on your machine connects | `npx netbeagle` |
+
 ## Development
 
 ```sh
