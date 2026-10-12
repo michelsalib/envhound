@@ -2,6 +2,13 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+
+- `envhound --help` and the README point to netbeagle, envhound's sibling: which process or
+  container listens on each port, and who can reach it.
+
 ## 0.5.0 (2026-10-12)
 
 ### Added
