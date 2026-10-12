@@ -7,6 +7,7 @@ import type {
 	WhyReport,
 } from "./analyze.ts";
 import { origin } from "./analyze.ts";
+import type { Finding } from "./doctor.ts";
 import type { DotenvKey, DotenvProblem } from "./dotenv.ts";
 import type { Assignment, Location } from "./model.ts";
 
@@ -422,6 +423,31 @@ export function renderWhy(r: WhyReport, o: RenderOptions): string {
 		),
 	);
 	return out.join("\n");
+}
+
+export function renderDoctor(findings: Finding[], o: RenderOptions): string {
+	const c = paint(o);
+	if (!findings.length) return c.green("✓ no problems found");
+	const mark = { error: c.red("✗"), warning: c.yellow("!"), info: c.cyan("·") };
+	const blocks = findings.map((f) =>
+		[
+			`${mark[f.severity]} ${tilde(f.title, o.home)}`,
+			...(f.at
+				? [c.dim(`  at ${loc(f.at, o.home)}${f.fn ? ` ${f.fn}()` : ""}`)]
+				: []),
+			`  ${c.dim("fix:")} ${tilde(f.fix, o.home)}`,
+		].join("\n"),
+	);
+	const n = (severity: Finding["severity"], word: string) => {
+		const k = findings.filter((f) => f.severity === severity).length;
+		return k ? [`${k} ${word}${k === 1 ? "" : "s"}`] : [];
+	};
+	const summary = [
+		...n("error", "error"),
+		...n("warning", "warning"),
+		...n("info", "note"),
+	].join(", ");
+	return `${blocks.join("\n\n")}\n\n${c.bold(summary)}`;
 }
 
 // JSON forms: same data, secrets masked unless asked otherwise.

@@ -2,6 +2,17 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+
+- `envhound doctor`: every problem with the environment a new shell gets, each with the startup
+  line it comes from and how to fix it, with the `envhound` command when envhound can do it. It
+  checks PATH (missing, duplicated, relative or empty, world-writable entries; version managers
+  fighting over a language; a shell older than its startup files) and variables (not exported,
+  no effect, set in several of your files, zsh exports only `~/.zshrc` makes, secrets in startup
+  files others can read). `--json`; exits 1 on errors.
+
 ## 0.4.3 (2026-10-12)
 
 ### Changed
