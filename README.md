@@ -125,6 +125,8 @@ rename. Downloads are https only.
 | `envhound edit [FILE…]` | interactive editor for variables, `PATH` and `.env` files (see below) |
 | `envhound completion bash\|zsh\|fish\|powershell` | a shell completion script (commands, flags, live variable names) |
 
+`envhound COMMAND --help` (or `envhound help COMMAND`) shows one command's usage, options and examples.
+
 Options: `--json`, `--show-secrets` (values of `*_TOKEN`, `*_KEY`, `*_PAT`, … and passwords in URLs such as `postgres://user:********@host` are masked by default), `--home DIR`, `--shell bash|zsh`,
 and for changes `--file FILE`, `--yes`, `--dry-run`, `--append`.
 

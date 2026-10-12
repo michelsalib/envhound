@@ -13,6 +13,7 @@ export const COMMANDS: Record<string, string> = {
 	edit: "interactive editor for variables, PATH and .env files",
 	completion: "print a shell completion script",
 	upgrade: "update envhound to the latest release",
+	help: "help for envhound, or for one command",
 };
 
 const FLAGS: Record<string, string> = {
@@ -78,6 +79,8 @@ export function complete(
 			.map((n) => [`${n}=`]);
 	else if (positionals[0] === "path" && positionals.length === 1)
 		candidates = Object.entries(PATH_COMMANDS);
+	else if (positionals.length === 1 && positionals[0] === "help")
+		candidates = Object.entries(COMMANDS).filter(([name]) => name !== "help");
 	else if (positionals.length === 1 && positionals[0] === "completion")
 		candidates = SHELLS.map((s) => [s]);
 

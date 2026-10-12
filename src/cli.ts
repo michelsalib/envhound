@@ -40,6 +40,7 @@ import {
 	shown,
 	tilde,
 } from "./format.ts";
+import { COMMAND_HELP, commandHelp, helpTopic, overview } from "./help.ts";
 import { banner } from "./logo.ts";
 import { locations, loginFile, loginShell } from "./managed.ts";
 import type { Trace } from "./model.ts";
@@ -78,78 +79,6 @@ import {
 
 const TAGLINE =
 	"find which startup file sets each environment variable, and change it";
-
-const HELP = `Usage:
-  envhound [list]        every exported variable, with the startup file:line that sets it
-  envhound blame VAR     every startup file:line that assigns VAR, in order
-                         (for PATH: what each step added or removed)
-  envhound doctor        every problem with the environment a new shell gets:
-                         PATH entries that are missing, duplicated, relative or
-                         writable by anyone, version managers fighting, variables
-                         not exported or set in several files, readable secrets;
-                         each with where it comes from and a fix. Exits 1 on errors
-  envhound why COMMAND   which file COMMAND runs, the PATH entry and startup line
-                         that put it first, the ones it hides, and whether a
-                         fresh login shell would run another
-  envhound path          current PATH, one entry per line, with who added it,
-                         flagging missing directories and duplicates
-  envhound dotenv [FILE...]
-                         check .env files (default ./.env): keys that are new,
-                         already set, or conflicting with your shell, and syntax
-                         problems; exits 1 if there are problems
-
-  envhound set NAME=value...       set variables for future login shells
-  envhound unset NAME...           remove variables envhound set
-  envhound path add DIR [--append] put DIR in PATH (at the front unless --append)
-  envhound path remove DIR         remove a directory envhound added
-                         These write ~/.config/envhound/env.sh, loaded by one line
-                         envhound adds to your login file (~/.zprofile for zsh,
-                         else the one bash reads); on Windows, your user
-                         variables (HKCU\\Environment), and unset and path remove
-                         also the machine's (HKLM), asking for administrator
-                         rights when needed. With --file FILE, set and
-                         unset edit a .env file instead. Every change is shown as
-                         a diff and confirmed first; changed files are backed up.
-
-  envhound edit [FILE...]
-                         interactive editor for variables, PATH and .env files
-                         (./.env is included when it exists): stage changes,
-                         then review them as a diff and write
-
-  envhound completion SHELL
-                         print a completion script for bash, zsh, fish or
-                         powershell, e.g. eval "$(envhound completion bash)" in
-                         ~/.bashrc, or in your PowerShell $PROFILE:
-                         envhound completion powershell | Out-String | Invoke-Expression
-  envhound upgrade       update envhound (installed with install.sh or install.ps1;
-                         otherwise shows the command for npm, bun, npx or bunx);
-                         the download must match SHA256SUMS and the npm package
-
-Options:
-  --json              machine-readable output (list, blame, why, path, doctor, dotenv)
-  --show-secrets      don't mask values of variables like *_TOKEN, *_KEY or *_PAT,
-                      or passwords in URLs (postgres://user:********@host)
-  --home DIR          act as if HOME were DIR (on Windows: only for backups)
-  --shell bash|zsh    replay this shell instead of your login shell ($SHELL)
-  -f, --file FILE     set/unset: edit this .env file instead of the shell
-  -y, --yes           set/unset/path: write without asking
-  --dry-run           set/unset/path: show the diff, write nothing
-  --append            path add: put DIR at the end of PATH
-  --stdin             set NAME --stdin: read the value from standard input, or
-                      type it unseen at a terminal, so it stays out of your
-                      shell history and the process list
-  -h, --help          show this help
-  -v, --version       show the version
-
-envhound replays your login shell (bash or zsh; bash for any other) from a
-clean environment with tracing on, so it only sees what startup files do. That
-runs your startup files once.
-On Windows, envhound reads the registry instead: the machine's and your
-variables, as a new terminal gets them.
-
-Once a week envhound asks npm in the background whether a newer version exists,
-and says so after a command. ENVHOUND_NO_UPDATE_CHECK=1 turns this off.
-`;
 
 type Values = {
 	json?: boolean;
@@ -247,11 +176,21 @@ async function main(argv: string[]): Promise<number> {
 				columns: process.stdout.columns,
 			},
 		);
-	if (values.help) {
+	// envhound help [COMMAND], or --help anywhere: one command's help when one is named
+	const asked = positionals[0] === "help";
+	const topic = helpTopic(asked ? positionals.slice(1) : positionals);
+	if (topic && COMMAND_HELP[topic]) usageHint = `envhound ${topic} --help`;
+	if (values.help || asked) {
+		if (topic) {
+			const text = commandHelp(topic);
+			if (!text) return usage(`no command '${topic}'`);
+			process.stdout.write(text);
+			return 0;
+		}
 		process.stdout.write(
 			art
-				? `${logo()}\n${HELP}`
-				: `envhound ${pkg.version}: ${TAGLINE}\n\n${HELP}`,
+				? `${logo()}\n${overview()}`
+				: `envhound ${pkg.version}\n${TAGLINE}\n\n${overview()}`,
 		);
 		return 0;
 	}
@@ -625,8 +564,11 @@ async function upgrade(): Promise<number> {
 	return 0;
 }
 
+/** Where a usage error points: the help of the command being run, once it is known. */
+let usageHint = "envhound --help";
+
 function usage(message: string): number {
-	console.error(`envhound: ${message}\nRun 'envhound --help' for usage.`);
+	console.error(`envhound: ${message}\nRun '${usageHint}' for usage.`);
 	return 2;
 }
 

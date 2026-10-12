@@ -23,9 +23,12 @@ describe("complete", () => {
 			"edit",
 			"completion",
 			"upgrade",
+			"help",
 		]));
 	test("prefix filter", () => expect(names(["b"])).toEqual(["blame"]));
 	test("flags", () => expect(names(["--j"])).toEqual(["--json"]));
+	test("help takes a command", () =>
+		expect(names(["help", "d"])).toEqual(["doctor", "dotenv"]));
 	test("--shell takes bash or zsh", () =>
 		expect(names(["--shell", "z"])).toEqual(["zsh"]));
 	test("variable names after blame, live from env", () =>
