@@ -265,13 +265,17 @@ test("rendering: errors first, a fix under each, and a count", () => {
 		{
 			rule: "b",
 			severity: "error",
-			title: `${home}/x is wrong`,
-			at: { file: join(home, ".zshrc"), line: 3 },
+			title: "/home/u/x is wrong",
+			at: { file: "/home/u/.zshrc", line: 3 },
 			fn: "add_path",
 			fix: "remove it",
 		},
 	];
-	const text = renderDoctor(fs, { home, color: false, showSecrets: false });
+	const text = renderDoctor(fs, {
+		home: "/home/u",
+		color: false,
+		showSecrets: false,
+	});
 	expect(text).toBe(
 		"· a note\n  fix: nothing to do\n\n✗ ~/x is wrong\n  at ~/.zshrc:3 add_path()\n  fix: remove it\n\n1 error, 1 note",
 	);
