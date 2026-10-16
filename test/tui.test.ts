@@ -12,14 +12,20 @@ import {
 	type Data,
 	dotenvViews,
 	handleKey,
+	handleMouse,
 	initialState,
 	type Key,
 	pathViews,
 	type State,
 	varViews,
 } from "../src/tui/state.ts";
-import { cmdArg, editorCommand, windowsCommand } from "../src/tui/terminal.ts";
-import { render, wrap } from "../src/tui/view.ts";
+import {
+	cmdArg,
+	editorCommand,
+	parseMouse,
+	windowsCommand,
+} from "../src/tui/terminal.ts";
+import { hitTest, keepScroll, render, wrap } from "../src/tui/view.ts";
 
 const ENV = join(process.cwd(), ".env");
 const data = (): Data => ({
@@ -527,4 +533,137 @@ test("on a wide screen a long path is shown whole in the table too", () => {
 	// on a narrow one it is cut from the left, and the detail below has it whole
 	expect(table(80)).not.toContain(long);
 	expect(table(80)).toContain("…");
+});
+
+describe("mouse", () => {
+	const W = 80;
+	const H = 12;
+	/** The screen line render draws `text` on, and the row a click there lands on. */
+	const click = (s: State, text: string) => {
+		const y = render(s, W, H, { color: false }).findIndex((l) =>
+			l.includes(text),
+		);
+		expect(y).toBeGreaterThan(0);
+		return hitTest(s, W, H, 4, y);
+	};
+
+	test("a click on a row is that row, as drawn", () => {
+		const s = initialState(data());
+		for (const name of ["API_TOKEN", "EDITOR", "TERM"])
+			expect(click(s, ` ${name} `)).toEqual({
+				kind: "row",
+				index: at(s, name),
+			});
+		// column headings, rules, detail and footer are not rows
+		expect(click(s, "SET BY")).toBeUndefined();
+		expect(hitTest(s, W, H, 4, H - 1)).toBeUndefined();
+	});
+
+	test("rows scrolled off the top are counted", () => {
+		const many: Data = {
+			...data(),
+			vars: Array.from({ length: 30 }, (_, i) => ({
+				name: `V${String(i).padStart(2, "0")}`,
+				value: "x",
+				by: "envhound",
+				managed: true,
+			})),
+		};
+		const s = { ...initialState(many), cursor: { vars: 20 } };
+		expect(click(s, " V20 ")).toEqual({ kind: "row", index: 20 });
+		expect(click(s, " V18 ")).toEqual({ kind: "row", index: 18 });
+	});
+
+	test("a click selects in place: the list doesn't scroll under the pointer", () => {
+		const many: Data = {
+			...data(),
+			vars: Array.from({ length: 30 }, (_, i) => ({
+				name: `V${String(i).padStart(2, "0")}`,
+				value: "x",
+				by: "envhound",
+				managed: true,
+			})),
+		};
+		// as the driver does before each draw
+		const shown = (s: State) => keepScroll(s, W, H);
+		let s = shown({ ...initialState(many), cursor: { vars: 12 } });
+		const body = (s: State) => render(s, W, H, { color: false }).slice(3, 7);
+		const before = body(s);
+		const hit = click(s, " V10 ");
+		expect(hit).toEqual({ kind: "row", index: 10 });
+		[s] = handleMouse(s, hit!);
+		s = shown(s);
+		expect(body(s)).toEqual(before);
+		// the list still follows the cursor past its edge
+		[s] = press(s, { name: "pageup" });
+		s = shown(s);
+		expect(render(s, W, H, { color: false }).join("\n")).toContain(" V00 ");
+	});
+
+	test("a click on a tab label is that tab", () => {
+		const s = initialState(data());
+		const top = render(s, W, H, { color: false })[0]!;
+		expect(hitTest(s, W, H, top.indexOf("PATH"), 0)).toEqual({
+			kind: "tab",
+			tab: 1,
+		});
+		expect(hitTest(s, W, H, top.indexOf(".env"), 0)).toEqual({
+			kind: "tab",
+			tab: 2,
+		});
+		expect(hitTest(s, W, H, 0, 0)).toBeUndefined(); // the title
+	});
+
+	test("click selects, a second click edits, the wheel moves", () => {
+		let s = initialState(data());
+		[s] = handleMouse(s, { kind: "row", index: at(s, "EDITOR") });
+		expect(s.cursor.vars).toBe(at(s, "EDITOR"));
+		expect(s.prompt).toBeUndefined();
+		expect(s.message?.text).toBe("click again to edit");
+		[s] = handleMouse(s, { kind: "row", index: at(s, "EDITOR") });
+		expect(s.prompt?.label).toBe("EDITOR=");
+		// a prompt keeps the mouse out
+		expect(handleMouse(s, { kind: "tab", tab: 1 })[0]).toBe(s);
+
+		s = initialState(data());
+		[s] = handleMouse(s, { kind: "wheel", lines: 3 });
+		expect(s.cursor.vars).toBe(3);
+		[s] = handleMouse(s, { kind: "wheel", lines: 3 });
+		expect(s.cursor.vars).toBe(3); // the last row
+		[s] = handleMouse(s, { kind: "tab", tab: 1 });
+		expect(s.tab).toBe(1);
+		// no editing on PATH, so no hint
+		[s] = handleMouse(s, { kind: "row", index: 1 });
+		expect(s.message).toBeUndefined();
+		[s] = handleMouse(s, { kind: "drag" });
+		expect(s.message?.text).toContain("hold shift");
+	});
+
+	test("parseMouse takes reports out of the keys", () => {
+		expect(parseMouse("j\x1b[<0;5;7Mk\x1b[<0;5;7m\x1b[<65;1;1M")).toEqual({
+			keys: "jk",
+			events: [
+				{ button: 0, x: 4, y: 6, release: false },
+				{ button: 0, x: 4, y: 6, release: true },
+				{ button: 65, x: 0, y: 0, release: false },
+			],
+			pending: "",
+		});
+		// X10: three bytes, each +32, whose letters must not be typed
+		expect(parseMouse("\x1b[M dq\x1b[M#dq")).toEqual({
+			keys: "",
+			events: [
+				{ button: 0, x: 67, y: 80, release: false },
+				{ button: 3, x: 67, y: 80, release: true },
+			],
+			pending: "",
+		});
+		// a report cut between reads waits for the rest; a lone escape is a key
+		expect(parseMouse("a\x1b[<0;1")).toEqual({
+			keys: "a",
+			events: [],
+			pending: "\x1b[<0;1",
+		});
+		expect(parseMouse("\x1b").keys).toBe("\x1b");
+	});
 });

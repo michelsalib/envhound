@@ -7,10 +7,13 @@ import {
 	cursorOf,
 	type DotenvView,
 	dotenvViews,
+	type Mouse,
 	type PathView,
 	pathViews,
+	rowCount,
 	type State,
 	type TabDef,
+	tabId,
 	tabs,
 	type VarView,
 	varViews,
@@ -110,13 +113,35 @@ const HELP = [
 	"",
 	"Anywhere",
 	"  u undo  ·  w write  ·  tab or 1-9 switch tabs  ·  q or esc quit  ·  ctrl-c quit now",
+	"  mouse: click a tab or row, click the selected row to edit it, wheel to scroll",
+	"         (shift-drag, or option-drag in iTerm2, selects text)",
 	"",
 	"Press any key to go back.",
 ];
 
-/** First row to show so that `cursor` stays visible, roughly centred. */
-function windowStart(cursor: number, total: number, size: number): number {
-	return Math.max(0, Math.min(cursor - Math.floor(size / 2), total - size));
+/** First row to show: where the list was, moved only as far as it takes to keep `cursor` visible. */
+function windowStart(
+	s: State,
+	cursor: number,
+	total: number,
+	size: number,
+): number {
+	const top = s.scroll[tabId(currentTab(s))] ?? 0;
+	const start = Math.min(Math.max(top, cursor - size + 1), cursor);
+	return Math.max(0, Math.min(start, total - size));
+}
+
+/**
+ * `s` with the current tab's first row where render shows it. The driver keeps it before drawing, so the list
+ * stays put under the mouse: selecting a row doesn't scroll it.
+ */
+export function keepScroll(s: State, width: number, height: number): State {
+	const list = layout(s, width, height).bodyHeight - 1;
+	const start = windowStart(s, cursorOf(s), rowCount(s), list);
+	const id = tabId(currentTab(s));
+	return s.scroll[id] === start
+		? s
+		: { ...s, scroll: { ...s.scroll, [id]: start } };
 }
 
 function tabLabel(t: TabDef, home: string): string {
@@ -127,23 +152,87 @@ function tabLabel(t: TabDef, home: string): string {
 	return name.length > 24 ? basename(t.file) : name;
 }
 
-function header(s: State, width: number, c: Styles): string {
-	const all = tabs(s);
-	const labels = all.map((t, i) => ` ${i + 1} ${tabLabel(t, s.data.home)} `);
-	const styled = labels
-		.map((l, i) => (i === s.tab ? c.inverse(l) : c.dim(l)))
-		.join(" ");
+const TITLE = "envhound edit";
+
+/** The header's parts that fit `width`: title, then staged count, then the other tabs are dropped first. */
+function headerLayout(s: State, width: number) {
+	const labels = tabs(s).map(
+		(t, i) => ` ${i + 1} ${tabLabel(t, s.data.home)} `,
+	);
 	const tabsWidth = labels.join(" ").length;
 	const stagedText = s.ops.length
 		? `${s.ops.length} staged · w to write`
 		: "nothing staged";
-	const staged = s.ops.length ? c.yellow(stagedText) : c.dim(stagedText);
-	// drop parts that don't fit: title, then staged count, then the other tabs
-	if (15 + tabsWidth + 3 + stagedText.length <= width)
-		return `${c.bold("envhound edit")}  ${styled}   ${staged}`;
-	if (tabsWidth + 1 + stagedText.length <= width) return `${styled} ${staged}`;
-	if (tabsWidth <= width) return styled;
-	return c.inverse(cell(labels[s.tab]!.trim(), width));
+	const title = TITLE.length + 2 + tabsWidth + 3 + stagedText.length <= width;
+	const staged = title || tabsWidth + 1 + stagedText.length <= width;
+	const all = staged || tabsWidth <= width;
+	return { labels, stagedText, title, staged, all };
+}
+
+function header(s: State, width: number, c: Styles): string {
+	const h = headerLayout(s, width);
+	if (!h.all) return c.inverse(cell(h.labels[s.tab]!.trim(), width));
+	const styled = h.labels
+		.map((l, i) => (i === s.tab ? c.inverse(l) : c.dim(l)))
+		.join(" ");
+	const staged = s.ops.length ? c.yellow(h.stagedText) : c.dim(h.stagedText);
+	if (h.title) return `${c.bold(TITLE)}  ${styled}   ${staged}`;
+	return h.staged ? `${styled} ${staged}` : styled;
+}
+
+/** Lines above the table (header and rule), below it (rule, detail) and the footer's two. */
+function layout(s: State, width: number, height: number) {
+	const tab = currentTab(s);
+	const detail = s.help
+		? ""
+		: tab.kind === "vars"
+			? varDetail(s)
+			: tab.kind === "path"
+				? pathDetail(s)
+				: dotenvDetail(s, tab.file);
+	// the detail wraps, so a long path or value can be read whole; it gives back room on short screens
+	const detailLines = wrap(
+		detail,
+		width,
+		Math.max(1, Math.min(DETAIL_LINES, height - TOP - FOOTER - 4)),
+	);
+	const bodyHeight = Math.max(
+		0,
+		height - TOP - FOOTER - 1 - detailLines.length,
+	);
+	return { detailLines, bodyHeight };
+}
+
+const TOP = 2;
+const FOOTER = 2;
+
+/** What is under column `x`, line `y` (from 0) of the screen render would draw: a tab or a table row. */
+export function hitTest(
+	s: State,
+	width: number,
+	height: number,
+	x: number,
+	y: number,
+): Mouse | undefined {
+	if (y === 0) {
+		const h = headerLayout(s, width);
+		if (!h.all) return undefined;
+		let from = h.title ? TITLE.length + 2 : 0;
+		for (const [tab, label] of h.labels.entries()) {
+			if (x >= from && x < from + label.length) return { kind: "tab", tab };
+			from += label.length + 1;
+		}
+		return undefined;
+	}
+	if (s.help) return undefined;
+	// below the column headings, within the rows shown
+	const { bodyHeight } = layout(s, width, height);
+	const line = y - TOP - 1;
+	const list = bodyHeight - 1;
+	const total = rowCount(s);
+	if (line < 0 || line >= list) return undefined;
+	const index = windowStart(s, cursorOf(s), total, list) + line;
+	return index < total ? { kind: "row", index } : undefined;
 }
 
 export function render(
@@ -156,6 +245,7 @@ export function render(
 	const out = [header(s, width, c), c.dim("─".repeat(Math.max(0, width)))];
 	const tab = currentTab(s);
 
+	// FOOTER lines: the keys, then the prompt, a message or the filter
 	const footer = [c.dim(cell(KEYS[tab.kind], width))];
 	if (s.prompt) {
 		const masked = s.prompt.secret && !s.showSecrets;
@@ -195,26 +285,7 @@ export function render(
 		);
 	}
 
-	const detail = s.help
-		? ""
-		: tab.kind === "vars"
-			? varDetail(s)
-			: tab.kind === "path"
-				? pathDetail(s)
-				: dotenvDetail(s, tab.file);
-	// the detail wraps, so a long path or value can be read whole; it gives back room on short screens
-	const detailLines = wrap(
-		detail,
-		width,
-		Math.max(
-			1,
-			Math.min(DETAIL_LINES, height - out.length - footer.length - 4),
-		),
-	);
-	const bodyHeight = Math.max(
-		0,
-		height - out.length - footer.length - 1 - detailLines.length,
-	);
+	const { detailLines, bodyHeight } = layout(s, width, height);
 	const body = s.help
 		? HELP.map((l) => cell(l, width))
 		: tab.kind === "vars"
@@ -275,7 +346,7 @@ function varLines(
 	const valueW = Math.max(10, width - nameW - byW - 6);
 	const list = height - 1;
 	const cursor = cursorOf(s);
-	const start = windowStart(cursor, rows.length, list);
+	const start = windowStart(s, cursor, rows.length, list);
 	const lines = [
 		c.bold(
 			clip(`  ${cell("NAME", nameW)}  ${cell("SET BY", byW)}  VALUE`, width),
@@ -337,7 +408,7 @@ function pathLines(
 	const dirW = Math.max(9, Math.min(longest, width - 6 - 2 - byW - 2 - 16));
 	const list = height - 1;
 	const cursor = cursorOf(s);
-	const start = windowStart(cursor, rows.length, list);
+	const start = windowStart(s, cursor, rows.length, list);
 	const lines = [
 		c.bold(
 			clip(`   #  ${cell("DIRECTORY", dirW)}  ${cell("ADDED BY", byW)}`, width),
@@ -422,7 +493,7 @@ function dotenvLines(
 	const statusW = Math.max(0, width - keyW - valueW - 12);
 	const list = height - 1;
 	const cursor = cursorOf(s);
-	const start = windowStart(cursor, rows.length, list);
+	const start = windowStart(s, cursor, rows.length, list);
 	const lines = [
 		c.bold(
 			clip(`  ${cell("KEY", keyW)}  LINE  ${cell("VALUE", valueW)}  `, width),

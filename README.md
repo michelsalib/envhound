@@ -228,6 +228,9 @@ confirmation, backup and verification as `envhound set`. <kbd>o</kbd> opens `$VI
 the selected variable or adds the selected directory, then reloads. Lines in your own startup files are
 yours to change there; envhound only writes its own file. <kbd>?</kbd> lists every key.
 
+The mouse works too: click a tab or a row, click the selected row again to edit it, and scroll with the
+wheel. Hold <kbd>Shift</kbd> (<kbd>Option</kbd> in iTerm2) while dragging to select text; a plain drag reminds you. (On Windows, use the keyboard.)
+
 `.env` files get a tab each: `./.env` when it exists, or the files you name (which then open first). Each key
 shows its line, its value and how it compares with your shell (same, or the shell's value when they differ),
 plus syntax problems and duplicates. Edits there go through the same diff and confirmation, but only change

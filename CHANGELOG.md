@@ -8,6 +8,9 @@ All notable changes to envhound. Versions follow [semantic versioning](https://s
 
 - `envhound --help` and the README point to netbeagle, envhound's sibling: which process or
   container listens on each port, and who can reach it.
+- `envhound edit` takes the mouse: click a tab or a row, click the selected row again to edit it,
+  scroll with the wheel. Shift-drag still selects text. Not on Windows, where Node gets no mouse
+  input from the console.
 
 ## 0.5.0 (2026-10-12)
 
