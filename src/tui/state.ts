@@ -81,6 +81,8 @@ export interface State {
 	ops: EditOp[];
 	/** cursor per tab, by tabId */
 	cursor: Record<string, number>;
+	/** first row shown per tab, by tabId; the view moves it only to keep the cursor on screen */
+	scroll: Record<string, number>;
 	filter: string;
 	/** reveal: the last character was just typed and shows unmasked; the terminal driver clears it after a moment */
 	prompt?: {
@@ -135,6 +137,7 @@ export function initialState(
 		tab: opts.tab ?? 0,
 		ops: [],
 		cursor: {},
+		scroll: {},
 		filter: "",
 		confirmQuit: false,
 		help: false,
@@ -243,7 +246,7 @@ export function dotenvViews(s: State, file: string): DotenvView[] {
 	return rows.filter((r) => matches(s, r.key, r.newValue ?? r.value));
 }
 
-function rowCount(s: State): number {
+export function rowCount(s: State): number {
 	const t = currentTab(s);
 	return t.kind === "vars"
 		? varViews(s).length
@@ -577,6 +580,40 @@ function notOurs(
 	if (row.by === "(inherited)")
 		return `${what} comes from the program that started this shell`;
 	return `${what} is set by ${s.data.windows ? "Windows" : "login or bash"} itself`;
+}
+
+/** What the mouse did, already placed on the screen by the view. */
+export type Mouse =
+	| { kind: "wheel"; lines: number }
+	| { kind: "tab"; tab: number }
+	| { kind: "row"; index: number }
+	/** pressed and released on different cells: someone trying to select text */
+	| { kind: "drag" };
+
+export function handleMouse(state: State, m: Mouse): [State, Effect?] {
+	// a prompt keeps the keyboard: the mouse can't drop what is being typed
+	if (state.prompt) return [state];
+	const s: State = { ...state, message: undefined, confirmQuit: false };
+	if (state.help) return [{ ...s, help: false }];
+	if (m.kind === "wheel") return [move(s, cursorOf(s) + m.lines)];
+	if (m.kind === "tab") return [{ ...s, tab: m.tab }];
+	if (m.kind === "drag")
+		return [
+			{
+				...s,
+				message: {
+					text: "to select text, hold shift while dragging (option in iTerm2)",
+				},
+			},
+		];
+	// a click selects a row; a click on the selected row edits it, as enter does
+	if (m.index !== cursorOf(s)) {
+		const moved = move(s, m.index);
+		return currentTab(s).kind === "path"
+			? [moved]
+			: [{ ...moved, message: { text: "click again to edit" } }];
+	}
+	return handleKey(state, { name: "return" });
 }
 
 export function handleKey(state: State, key: Key): [State, Effect?] {
