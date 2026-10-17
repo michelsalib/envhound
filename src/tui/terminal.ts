@@ -16,11 +16,9 @@ import {
 } from "./state.ts";
 import { hitTest, keepScroll, render } from "./view.ts";
 
-// Windows' console hands Node no mouse input, so asking for it would only take text selection away
-const MOUSE = process.platform !== "win32";
 // alternate screen, hide cursor, report clicks and the wheel (SGR encoding, any width)
-const ENTER = `\x1b[?1049h\x1b[?25l${MOUSE ? "\x1b[?1000h\x1b[?1006h" : ""}`;
-const LEAVE = `${MOUSE ? "\x1b[?1006l\x1b[?1000l" : ""}\x1b[?25h\x1b[?1049l`;
+const ENTER = "\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h";
+const LEAVE = "\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l";
 
 export interface MouseEvent {
 	/** xterm's button code: 0 left, 1 middle, 2 right, 64/65 wheel up/down, +4/8/16 shift/alt/ctrl */
