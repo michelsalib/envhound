@@ -229,7 +229,7 @@ the selected variable or adds the selected directory, then reloads. Lines in you
 yours to change there; envhound only writes its own file. <kbd>?</kbd> lists every key.
 
 The mouse works too: click a tab or a row, click the selected row again to edit it, and scroll with the
-wheel. Hold <kbd>Shift</kbd> (<kbd>Option</kbd> in iTerm2) while dragging to select text; a plain drag reminds you. (On Windows, use the keyboard.)
+wheel. Hold <kbd>Shift</kbd> (<kbd>Option</kbd> in iTerm2) while dragging to select text; a plain drag reminds you.
 
 `.env` files get a tab each: `./.env` when it exists, or the files you name (which then open first). Each key
 shows its line, its value and how it compares with your shell (same, or the shell's value when they differ),

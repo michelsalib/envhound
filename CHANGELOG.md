@@ -2,6 +2,12 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Fixed
+
+- `envhound edit` takes the mouse on Windows too: 0.6.0 left it off there by mistake.
+
 ## 0.6.0 (2026-10-16)
 
 ### Added
