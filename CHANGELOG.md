@@ -2,6 +2,16 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Changed
+
+- The npm package is now [`@michelsalib/envhound`](https://www.npmjs.com/package/@michelsalib/envhound),
+  next to its sibling `@michelsalib/nethound`; the command is still `envhound`. An install of the
+  `envhound` package updates to this release, then gets the command to switch with its next update
+  notice: `npm uninstall -g envhound && npm install -g @michelsalib/envhound`.
+- The pack's other tool, netbeagle, is now nethound (`npx @michelsalib/nethound`).
+
 ## 0.6.1 (2026-10-17)
 
 ### Fixed

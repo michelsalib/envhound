@@ -275,8 +275,25 @@ describe("installKind", () => {
 		test(kind + ": " + path, () =>
 			expect(installKind(path)).toBe(kind as never),
 		);
+	test("an install of the envhound package, before @michelsalib/envhound", () => {
+		expect(
+			upgradeCommand("npm", "/usr/lib/node_modules/envhound/dist/envhound.js"),
+		).toBe("npm uninstall -g envhound && npm install -g @michelsalib/envhound");
+		expect(
+			upgradeCommand(
+				"npx",
+				"C:\\Users\\u\\AppData\\Local\\npm-cache\\_npx\\1a2b\\node_modules\\envhound\\dist\\envhound.js",
+			),
+		).toBe("npx @michelsalib/envhound@latest");
+		expect(
+			upgradeCommand(
+				"npm",
+				"/usr/lib/node_modules/@michelsalib/envhound/dist/envhound.js",
+			),
+		).toBe("npm install -g @michelsalib/envhound@latest");
+	});
 	test("commands", () => {
-		expect(upgradeCommand("npx")).toBe("npx envhound@latest");
+		expect(upgradeCommand("npx")).toBe("npx @michelsalib/envhound@latest");
 		expect(upgradeCommand("standalone")).toBe("envhound upgrade");
 	});
 });

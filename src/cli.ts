@@ -539,7 +539,7 @@ async function upgrade(): Promise<number> {
 	}
 	if (kind !== "standalone") {
 		console.log(
-			`This envhound was not installed with ${WINDOWS ? "install.ps1" : "install.sh"}. Update it with:\n  ${upgradeCommand(kind)}`,
+			`This envhound was not installed with ${WINDOWS ? "install.ps1" : "install.sh"}. Update it with:\n  ${upgradeCommand(kind, script)}`,
 		);
 		return 0;
 	}

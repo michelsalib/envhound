@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
 export const REPO = "michelsalib/envhound";
-const REGISTRY = "https://registry.npmjs.org/envhound";
+const REGISTRY = "https://registry.npmjs.org/@michelsalib/envhound";
 export const WEEK = 7 * 24 * 3600 * 1000;
 
 /**
@@ -69,16 +69,30 @@ export function installKind(script: string): InstallKind {
 	return "standalone";
 }
 
-export function upgradeCommand(kind: InstallKind): string {
+/**
+ * The command that updates this envhound. Up to 0.7.0 the npm package was envhound, now
+ * @michelsalib/envhound: an install of the old one is replaced (both install a command envhound).
+ */
+export function upgradeCommand(kind: InstallKind, script = ""): string {
+	if (/[\\/]node_modules[\\/]envhound[\\/]/.test(script))
+		switch (kind) {
+			case "npx":
+			case "bunx":
+				return `${kind} @michelsalib/envhound@latest`;
+			case "bun":
+				return "bun remove -g envhound && bun add -g @michelsalib/envhound";
+			case "npm":
+				return "npm uninstall -g envhound && npm install -g @michelsalib/envhound";
+		}
 	switch (kind) {
 		case "npx":
-			return "npx envhound@latest";
+			return "npx @michelsalib/envhound@latest";
 		case "bunx":
-			return "bunx envhound@latest";
+			return "bunx @michelsalib/envhound@latest";
 		case "bun":
-			return "bun add -g envhound@latest";
+			return "bun add -g @michelsalib/envhound@latest";
 		case "npm":
-			return "npm install -g envhound@latest";
+			return "npm install -g @michelsalib/envhound@latest";
 		case "brew":
 			return "brew upgrade envhound";
 		case "scoop":
@@ -155,7 +169,8 @@ export function updateNotice(
 	now = Date.now(),
 ): string | undefined {
 	try {
-		const kind = installKind(realpathSync(script));
+		const real = realpathSync(script);
+		const kind = installKind(real);
 		if (kind === "dev") return undefined;
 		const state = readState(stateFile);
 		const { check, notify } = decide(state, current, now);
@@ -172,7 +187,7 @@ export function updateNotice(
 		}
 		if (!notify) return undefined;
 		writeState(stateFile, { ...readState(stateFile), notifiedAt: now });
-		return `envhound ${state.latest} is available (you have ${current}). Update with: ${upgradeCommand(kind)}`;
+		return `envhound ${state.latest} is available (you have ${current}). Update with: ${upgradeCommand(kind, real)}`;
 	} catch {
 		return undefined;
 	}
