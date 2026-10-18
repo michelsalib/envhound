@@ -7,11 +7,11 @@
 <p align="center">Find which startup file (or, on Windows, which registry key) sets each environment variable, audit your <code>PATH</code>, and change them safely.</p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/envhound"><img src="https://img.shields.io/npm/v/envhound?color=a8521a" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@michelsalib/envhound"><img src="https://img.shields.io/npm/v/@michelsalib/envhound?color=a8521a" alt="npm version"></a>
   <a href="https://github.com/michelsalib/envhound/actions/workflows/ci.yml"><img src="https://github.com/michelsalib/envhound/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/node/v/envhound" alt="Node version">
+  <img src="https://img.shields.io/node/v/@michelsalib/envhound" alt="Node version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue" alt="Linux, macOS and Windows">
-  <a href="LICENSE"><img src="https://img.shields.io/npm/l/envhound" alt="MIT license"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/@michelsalib/envhound" alt="MIT license"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/michelsalib/envhound"><img src="https://api.scorecard.dev/projects/github.com/michelsalib/envhound/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://www.bestpractices.dev/projects/15395"><img src="https://www.bestpractices.dev/projects/15395/badge" alt="OpenSSF Best Practices: passing"></a>
 </p>
@@ -28,9 +28,9 @@ When you want to change something, it shows a diff, backs up, writes, and checks
 **Try it, nothing to install:**
 
 ```sh
-npx envhound blame PATH    # who put each directory in PATH
-npx envhound               # every variable, and where it is set
-npx envhound edit          # browse and change them in your terminal
+npx @michelsalib/envhound blame PATH    # who put each directory in PATH
+npx @michelsalib/envhound               # every variable, and where it is set
+npx @michelsalib/envhound edit          # browse and change them in your terminal
 ```
 
 ```
@@ -55,10 +55,13 @@ macOS); with another one, such as fish, it shows what a bash login shell gets an
 [Status](#status).
 
 ```sh
-npx envhound blame PATH        # or: bunx envhound blame PATH, nothing to install
-npm install -g envhound        # or: bun add -g envhound
+npx @michelsalib/envhound blame PATH        # or: bunx @michelsalib/envhound blame PATH, nothing to install
+npm install -g @michelsalib/envhound        # or: bun add -g @michelsalib/envhound
 curl -fsSL https://github.com/michelsalib/envhound/releases/latest/download/install.sh | sh
 ```
+
+Up to 0.6.1 the npm package was `envhound`; the command hasn't changed. To move an install of it:
+`npm uninstall -g envhound && npm install -g @michelsalib/envhound`.
 
 To pin a version, or to read the script before running it:
 
@@ -99,7 +102,7 @@ that puts it in your `Path`. It never edits your profile or your `Path` itself.
 
 **Updates.** Once a week envhound asks the npm registry, in the background, whether a newer version exists,
 and when there is one says so after a command, at most once a week, with the update command for how you
-installed it: `envhound upgrade` for `install.sh` and `install.ps1`, `npm install -g envhound@latest`, `npx envhound@latest`, and so on.
+installed it: `envhound upgrade` for `install.sh` and `install.ps1`, `npm install -g @michelsalib/envhound@latest`, `npx @michelsalib/envhound@latest`, and so on.
 It stays quiet in scripts, CI, with `--json` or `--home`, and with `ENVHOUND_NO_UPDATE_CHECK=1`.
 
 `envhound upgrade` never runs anything it downloads. It fetches the latest `envhound.js` from the GitHub
@@ -297,8 +300,8 @@ nothing to configure.
 
 | Tool | What it finds | Try it |
 |---|---|---|
-| **envhound** | which startup file (or registry key) sets each environment variable, and your `PATH` | `npx envhound` |
-| **[netbeagle](https://github.com/michelsalib/netbeagle)** | which process or container listens on each port, who can reach it, and how everything on your machine connects | `npx netbeagle` |
+| **envhound** | which startup file (or registry key) sets each environment variable, and your `PATH` | `npx @michelsalib/envhound` |
+| **[nethound](https://github.com/michelsalib/nethound)** | which process or container listens on each port, who can reach it, and how everything on your machine connects | `npx @michelsalib/nethound` |
 
 ## Development
 

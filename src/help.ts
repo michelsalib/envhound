@@ -293,7 +293,7 @@ your startup files once. On Windows it reads the registry instead.
 Once a week it asks npm in the background whether a newer version exists;
 ENVHOUND_NO_UPDATE_CHECK=1 turns this off.
 
-From the same pack: netbeagle, what listens on each port and who reaches it.
-  npx netbeagle
+From the same pack: nethound, what listens on each port and who reaches it.
+  npx @michelsalib/nethound
 `;
 }

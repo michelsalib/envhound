@@ -25,7 +25,7 @@ test("every command has a page, and the overview lists it", () => {
 	expect(text).toContain("  path add DIR...");
 	expect(text).toContain("envhound COMMAND --help");
 	// the sibling, from the same pack
-	expect(text).toContain("npx netbeagle");
+	expect(text).toContain("npx @michelsalib/nethound");
 });
 
 test("a page lists only the options its command takes", () => {
