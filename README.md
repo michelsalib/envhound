@@ -16,6 +16,8 @@
   <a href="https://www.bestpractices.dev/projects/15395"><img src="https://www.bestpractices.dev/projects/15395/badge" alt="OpenSSF Best Practices: passing"></a>
 </p>
 
+<p align="center"><a href="https://micheldev.com/envhound"><b>micheldev.com/envhound</b></a></p>
+
 Why is `~/.local/bin` in your `PATH` twice? Which of your dotfiles sets `EDITOR`, and why does a new terminal
 not pick up the value you just changed? envhound answers those in one command, by replaying how your shell
 starts (or, on Windows, how the registry is read) and pointing at the exact line or key behind every value.
@@ -66,7 +68,7 @@ Up to 0.6.1 the npm package was `envhound`; the command hasn't changed. To move 
 To pin a version, or to read the script before running it:
 
 ```sh
-curl -fsSL https://github.com/michelsalib/envhound/releases/download/v0.2.1/install.sh -o install.sh
+curl -fsSL https://github.com/michelsalib/envhound/releases/download/v0.7.0/install.sh -o install.sh
 less install.sh && sh install.sh
 gh attestation verify install.sh -R michelsalib/envhound   # optional: proves GitHub Actions built it
 ```
@@ -89,7 +91,7 @@ scoop bucket add envhound https://github.com/michelsalib/scoop-envhound
 scoop install envhound/envhound                               # Scoop, Windows
 ```
 
-`install.sh` puts `envhound` in `~/.local/bin` (`ENVHOUND_INSTALL_DIR` to change it, `ENVHOUND_VERSION=0.2.0` to pin
+`install.sh` puts `envhound` in `~/.local/bin` (`ENVHOUND_INSTALL_DIR` to change it, `ENVHOUND_VERSION=0.7.0` to pin
 a version), checks it against the release's `SHA256SUMS`, and runs it on Node, or on Bun when there is no
 Node ≥ 20. With neither, or with `ENVHOUND_BINARY=1`, it installs the standalone binary for your system
 (Linux and macOS, x64 and arm64; about 70 to 90 MB, as it carries the Bun runtime). It also installs bash completion where bash-completion loads it, and fish completion when fish
