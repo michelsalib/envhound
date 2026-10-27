@@ -138,8 +138,9 @@ complete -c envhound -l home -x -a '(__fish_complete_directories (commandline -c
 		// Windows PowerShell drops empty arguments to programs, so the word being typed
 		// goes first, behind a "_" that keeps it from being empty
 		case "powershell":
-			return `# envhound completion for PowerShell. Add to your profile (notepad $PROFILE):
-#   envhound completion powershell | Out-String | Invoke-Expression
+			return `# envhound completion for PowerShell. Save it next to your profile, and load it from there:
+#   envhound completion powershell > "$(Split-Path $PROFILE)\\envhound.ps1"
+#   Add-Content $PROFILE '. "$PSScriptRoot\\envhound.ps1"'
 Register-ArgumentCompleter -Native -CommandName envhound -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $before = @($commandAst.CommandElements | Select-Object -Skip 1 |
