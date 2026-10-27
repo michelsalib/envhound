@@ -1,6 +1,6 @@
 {
 	"name": "@michelsalib/envhound",
-	"version": "0.7.0",
+	"version": "0.7.1",
 	"description": "Find which startup file sets each environment variable, and audit your PATH",
 	"keywords": [
 		"environment",
