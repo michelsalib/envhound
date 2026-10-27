@@ -256,11 +256,16 @@ eval "$(envhound completion zsh)"                                 # in ~/.zshrc,
 envhound completion fish > ~/.config/fish/completions/envhound.fish
 ```
 
-In PowerShell, add this line to your profile (`notepad $PROFILE`):
+In PowerShell, save the script next to your profile, and load it from there:
 
 ```powershell
-envhound completion powershell | Out-String | Invoke-Expression
+envhound completion powershell > "$(Split-Path $PROFILE)\envhound.ps1"
+Add-Content $PROFILE '. "$PSScriptRoot\envhound.ps1"'
 ```
+
+The second line runs once; after an upgrade, rerun the first. Loading a saved script doesn't start envhound
+in every new shell, as the older `envhound completion powershell | Out-String | Invoke-Expression` line
+did, which was slow on the first shell after a reboot: replace that line if your profile has it.
 
 Completion is dynamic: on each <kbd>Tab</kbd> the script asks `envhound` for candidates, so `envhound blame <Tab>`
 offers the variables of the shell you are typing in.

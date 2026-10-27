@@ -2,6 +2,14 @@
 
 All notable changes to envhound. Versions follow [semantic versioning](https://semver.org).
 
+## Unreleased
+
+### Changed
+
+- PowerShell completion is saved as `envhound.ps1` next to your profile and loaded from there, instead
+  of with `Out-String | Invoke-Expression`, which started envhound in every new shell and slowed down
+  the first one after a reboot. See the README for the two lines that replace the old one.
+
 ## 0.7.0 (2026-10-18)
 
 ### Changed

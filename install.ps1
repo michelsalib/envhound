@@ -92,8 +92,9 @@ $exe = if ($runtime -eq 'binary') { "$dir\envhound.exe" } else { "$dir\envhound.
 $installed = & $exe --version
 $how = if ($runtime -eq 'binary') { 'standalone binary' } else { "runs on $runtime" }
 Write-Output "installed envhound $installed in $dir ($how)"
-Write-Output 'PowerShell completion: add this line to your profile (notepad $PROFILE):'
-Write-Output '  envhound completion powershell | Out-String | Invoke-Expression'
+Write-Output 'PowerShell completion: save it next to your profile, and load it from there:'
+Write-Output '  envhound completion powershell > "$(Split-Path $PROFILE)\envhound.ps1"'
+Write-Output '  Add-Content $PROFILE ''. "$PSScriptRoot\envhound.ps1"'''
 
 $inPath = ($env:Path -split ';' | Where-Object { $_.TrimEnd('\') -eq $dir.TrimEnd('\') }).Count -gt 0
 if (-not $inPath) {
