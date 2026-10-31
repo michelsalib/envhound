@@ -17,7 +17,7 @@
 		"type": "git",
 		"url": "git+https://github.com/michelsalib/envhound.git"
 	},
-	"homepage": "https://github.com/michelsalib/envhound#readme",
+	"homepage": "https://micheldev.com/envhound",
 	"bugs": "https://github.com/michelsalib/envhound/issues",
 	"type": "module",
 	"bin": {
